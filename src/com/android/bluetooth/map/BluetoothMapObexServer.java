@@ -621,7 +621,7 @@ public class BluetoothMapObexServer extends ServerRequestHandler {
                 outAppParams.setMessageListingSize(listSize);
                 Log.d(TAG, "not setting body and end of body header");
                 op.noBodyHeader();
-                op.noEndofBody();
+                //op.noEndofBody();
             }
 
             // Build the application parameter header
@@ -778,7 +778,7 @@ public class BluetoothMapObexServer extends ServerRequestHandler {
                 outStream = op.openOutputStream();
             } else {
                 op.noBodyHeader();
-                op.noEndofBody();
+                //op.noEndofBody();
             }
 
             // Build and set the application parameter header
