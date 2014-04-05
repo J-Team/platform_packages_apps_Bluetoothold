@@ -90,8 +90,7 @@ final class A2dpStateMachine extends StateMachine {
     private static final int AUDIO_FOCUS_LOSS_TRANSIENT = 2;
 
     private static final ParcelUuid[] A2DP_UUIDS = {
-        BluetoothUuid.AudioSink,
-        BluetoothUuid.AudioSource
+        BluetoothUuid.AudioSink
     };
 
     // mCurrentDevice is the device connected before the state changes
@@ -580,6 +579,9 @@ final class A2dpStateMachine extends StateMachine {
                         case EVENT_TYPE_AUDIO_STATE_CHANGED:
                             processAudioStateEvent(event.valueInt, event.device);
                             break;
+                        case EVENT_TYPE_REQUEST_AUDIO_FOCUS:
+                            processAudioFocusRequestEvent(event.valueInt, event.device);
+                            break;
                         default:
                             loge("Unexpected stack event: " + event.type);
                             break;
@@ -650,32 +652,20 @@ final class A2dpStateMachine extends StateMachine {
                                                            mCurrentDevice);
                 return;
             }
-
+            log("processAudioStateEvent  " + state);
             switch (state) {
                 case AUDIO_STATE_STARTED:
                     if (mPlayingA2dpDevice == null) {
                        mPlayingA2dpDevice = device;
                        broadcastAudioState(device, BluetoothA2dp.STATE_PLAYING,
                                            BluetoothA2dp.STATE_NOT_PLAYING);
-                       if(isSrcNative(getByteAddress(device))){
-                           // in case PEER DEVICE is A2DP SRC we need to manager audio focus
-                         int status =  mAudioManager.requestAudioFocus(mAudioFocusListener,
-                            AudioManager.STREAM_MUSIC,AudioManager.AUDIOFOCUS_GAIN);
-                         loge("Status gain returned " + status);
-                       }
                     }
                     break;
                 case AUDIO_STATE_STOPPED:
-                    if(mPlayingA2dpDevice != null) {
+                    if (mPlayingA2dpDevice != null) {
                         mPlayingA2dpDevice = null;
                         broadcastAudioState(device, BluetoothA2dp.STATE_NOT_PLAYING,
                                             BluetoothA2dp.STATE_PLAYING);
-                        if(isSrcNative(getByteAddress(device))){
-                            // in case PEER DEVICE is A2DP SRC we need to manager audio focus
-                            int status = mAudioManager.abandonAudioFocus(mAudioFocusListener);
-                            loge("Status loss returned " + status);
-                        }
-
                     }
                     break;
                 default:
@@ -883,6 +873,18 @@ final class A2dpStateMachine extends StateMachine {
         }
     }
 
+    private void onAudioFocusRequest(int enable, byte[] address) {
+        BluetoothDevice device = getDevice(address);
+        logw(" checkaudiofocus for  " + device + "enable" + enable);
+        if (1 == enable) {
+            // send a request for audio_focus
+            StackEvent event = new StackEvent(EVENT_TYPE_REQUEST_AUDIO_FOCUS);
+            event.valueInt = enable;
+            event.device = getDevice(address);
+            sendMessage(STACK_EVENT, event);
+        }
+    }
+
     private BluetoothDevice getDevice(byte[] address) {
         return mAdapter.getRemoteDevice(Utils.getAddressStringFromByte(address));
     }
@@ -959,7 +961,7 @@ final class A2dpStateMachine extends StateMachine {
 
     private OnAudioFocusChangeListener mAudioFocusListener = new OnAudioFocusChangeListener(){
         public void onAudioFocusChange(int focusChange){
-            loge("onAudioFocusChangeListener  focuschange" + focusChange);
+            log("onAudioFocusChangeListener  focuschange" + focusChange);
             switch(focusChange){
                 case AudioManager.AUDIOFOCUS_LOSS:
                     if (mCurrentDevice != null) {
@@ -1026,6 +1028,7 @@ final class A2dpStateMachine extends StateMachine {
     final private static int EVENT_TYPE_NONE = 0;
     final private static int EVENT_TYPE_CONNECTION_STATE_CHANGED = 1;
     final private static int EVENT_TYPE_AUDIO_STATE_CHANGED = 2;
+    final private static int EVENT_TYPE_REQUEST_AUDIO_FOCUS = 3;
 
    // Do not modify without updating the HAL bt_av.h files.
 
