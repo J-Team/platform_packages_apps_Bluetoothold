@@ -30,6 +30,7 @@ import android.util.Log;
 import android.os.PowerManager;
 import com.android.bluetooth.Utils;
 import com.android.bluetooth.btservice.RemoteDevices.DeviceProperties;
+import android.bluetooth.QBluetoothAdapter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -303,6 +304,8 @@ final class RemoteDevices {
         intent.putExtra(BluetoothDevice.EXTRA_PAIRING_KEY, pin);
         intent.putExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT,
                     BluetoothDevice.PAIRING_VARIANT_DISPLAY_PIN);
+        // Make intent as foreground
+        intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         mAdapterService.sendBroadcast(intent, mAdapterService.BLUETOOTH_ADMIN_PERM);
         // Release wakelock to allow the LCD to go off after the PIN popup notification.
         mWakeLock.release();
@@ -437,6 +440,8 @@ final class RemoteDevices {
         intent.putExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT,
                 BluetoothDevice.PAIRING_VARIANT_PIN);
         intent.putExtra(BluetoothDevice.EXTRA_SECURE_PAIRING, secure);
+        //Make intent as foreground
+        intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         mAdapterService.sendBroadcast(intent, mAdapterService.BLUETOOTH_ADMIN_PERM);
         // Release wakelock to allow the LCD to go off after the PIN popup notification.
         mWakeLock.release();
@@ -480,6 +485,8 @@ final class RemoteDevices {
 
         Intent intent = new Intent(BluetoothDevice.ACTION_PAIRING_REQUEST);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
+        //Make intent as foreground
+        intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         if (displayPasskey) {
             intent.putExtra(BluetoothDevice.EXTRA_PAIRING_KEY, passkey);
         }
@@ -514,6 +521,27 @@ final class RemoteDevices {
         }
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        mAdapterService.sendBroadcast(intent, mAdapterService.BLUETOOTH_PERM);
+    }
+
+    void bleConnParamsCallback(int status, byte[] address, int connIntervalMin, int connIntervalMax, int connLatency,
+            int supervisionTimeout, int evt) {
+        BluetoothDevice device =  mAdapter.getRemoteDevice(Utils.getAddressStringFromByte(address));
+        if (device == null) {
+            errorLog("bleConnParamsCallback: Device is NULL");
+            return;
+        }
+
+        Intent intent = null;
+        intent = new Intent(QBluetoothAdapter.ACTION_BLE_CONN_PARAMS);
+        Log.e(TAG,"bleConnParamsCallback: Conn params changed to Device:" + device);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device);
+        intent.putExtra(QBluetoothAdapter.EXTRA_CONN_INTERVAL_MIN, connIntervalMin);
+        intent.putExtra(QBluetoothAdapter.EXTRA_CONN_INTERVAL_MAX, connIntervalMax);
+        intent.putExtra(QBluetoothAdapter.EXTRA_CONN_LATENCY, connLatency);
+        intent.putExtra(QBluetoothAdapter.EXTRA_SUPERVISION_TIMEOUT, supervisionTimeout);
+        intent.putExtra(QBluetoothAdapter.EXTRA_STATUS, status);
+        intent.putExtra(QBluetoothAdapter.EXTRA_EVENT, evt);
         mAdapterService.sendBroadcast(intent, mAdapterService.BLUETOOTH_PERM);
     }
 

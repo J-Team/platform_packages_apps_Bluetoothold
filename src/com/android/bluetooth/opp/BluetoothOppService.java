@@ -46,6 +46,7 @@ import android.content.IntentFilter;
 import android.database.CharArrayBuffer;
 import android.database.ContentObserver;
 import android.database.Cursor;
+import android.database.CursorWindowAllocationException;
 import android.database.sqlite.SQLiteException;
 import android.media.MediaScannerConnection;
 import android.media.MediaScannerConnection.MediaScannerConnectionClient;
@@ -64,7 +65,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothProfile;
-import android.bluetooth.BluetoothHeadset;
 
 /**
  * Performs the background Bluetooth OPP transfer. It also starts thread to
@@ -73,7 +73,7 @@ import android.bluetooth.BluetoothHeadset;
 
 public class BluetoothOppService extends Service {
     private static final boolean D = Constants.DEBUG;
-    private static final boolean V = Constants.VERBOSE;
+    private static boolean V;
 
     private boolean userAccepted = false;
 
@@ -177,7 +177,6 @@ public class BluetoothOppService extends Service {
         IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         filter.addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
         filter.addAction(BluetoothA2dp.ACTION_PLAYING_STATE_CHANGED);
-        filter.addAction(BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED);
 
         registerReceiver(mBluetoothReceiver, filter);
 
@@ -208,6 +207,8 @@ public class BluetoothOppService extends Service {
     }
 
     private void startListener() {
+        V = Log.isLoggable(Constants.TAG, Log.VERBOSE) ? true : false;
+        if (V) Log.v(TAG, "startListener");
         if (!mListenStarted) {
             if (mAdapter.isEnabled()) {
                 if (V) Log.v(TAG, "Starting RfcommListener");
@@ -394,6 +395,7 @@ public class BluetoothOppService extends Service {
                         break;
                     case BluetoothAdapter.STATE_TURNING_OFF:
                         if (V) Log.v(TAG, "Receiver DISABLED_ACTION ");
+                        removePendingTransfer();
                         mNotifier.updateNotifier();
                         //FIX: Don't block main thread
                         /*
@@ -408,25 +410,6 @@ public class BluetoothOppService extends Service {
                         mHandler.sendMessage(mHandler.obtainMessage(STOP_LISTENER));
 
                         break;
-                }
-            } else if (action.equals(BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED)) {
-                int newState = intent.getIntExtra(BluetoothHeadset.EXTRA_STATE, -1);
-                int oldState = intent.getIntExtra(BluetoothHeadset.EXTRA_PREVIOUS_STATE, -1);
-                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                if (V) Log.v(TAG," Received BluetoothHeadset.ACTION_AUDIO_STATE_CHANGED");
-                if (V) Log.v(TAG,"device: " + device + " newState: " + newState);
-
-                if (mOppManager != null) {
-                    if (newState == BluetoothHeadset.STATE_AUDIO_CONNECTED) {
-                        if (V) Log.v(TAG," Mark SCO state as connected");
-                        mOppManager.isScoConnected = true;
-                    } else if (newState == BluetoothHeadset.STATE_AUDIO_DISCONNECTED) {
-                        if (V) Log.v(TAG," Mark SCO state as not connected");
-                        mOppManager.isScoConnected = false;
-                    } else {
-                        if (V) Log.v(TAG," SCO state not handled");
-                        mOppManager.isScoConnected = false;
-                    }
                 }
             } else if (action.equals(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)) {
                 if (V) {
@@ -472,7 +455,9 @@ public class BluetoothOppService extends Service {
     private void updateFromProvider() {
         synchronized (BluetoothOppService.this) {
             mPendingUpdate = true;
-            if (mUpdateThread == null) {
+            if ((mUpdateThread == null) && (mAdapter != null)
+                && mAdapter.isEnabled()) {
+                if (V) Log.v(TAG, "Starting a new thread");
                 mUpdateThread = new UpdateThread();
                 mUpdateThread.start();
             }
@@ -500,20 +485,28 @@ public class BluetoothOppService extends Service {
                     if (!mPendingUpdate) {
                         mUpdateThread = null;
                         if (!keepService && !mListenStarted) {
+                            if (V) Log.v(TAG, "Need to stop self");
                             stopSelf();
                             break;
                         }
+                        if (V) Log.v(TAG, "***returning from updatethread***");
                         return;
                     }
                     mPendingUpdate = false;
                 }
-                Cursor cursor;
+                Cursor cursor = null;
                 try {
                     cursor = getContentResolver().query(BluetoothShare.CONTENT_URI, null, null,
                         null, BluetoothShare._ID);
                 } catch (SQLiteException e) {
+                    if (cursor != null){
+                        cursor.close();
+                    }
                     cursor = null;
-                    Log.e(TAG, "SQLite exception: " + e);
+                    Log.e(TAG, "UpdateThread: " + e);
+                } catch (CursorWindowAllocationException e) {
+                    cursor = null;
+                    Log.e(TAG, "UpdateThread: " + e);
                 }
 
                 if (cursor == null) {
@@ -624,11 +617,11 @@ public class BluetoothOppService extends Service {
                     }
                 }
 
-                mNotifier.updateNotification();
-
                 cursor.close();
                 if (V) Log.v(TAG, "Freeing cursor: " + cursor);
                 cursor = null;
+
+                mNotifier.updateNotification();
             }
         }
 
@@ -719,7 +712,7 @@ public class BluetoothOppService extends Service {
                 if (sendFileInfo == null || sendFileInfo.mInputStream == null) {
                     Log.e(TAG, "Can't open file for OUTBOUND info " + info.mId);
                     Constants.updateShareStatus(this, info.mId, BluetoothShare.STATUS_BAD_REQUEST);
-                    BluetoothOppUtility.closeSendFileInfo(info.mUri, sendFileInfo);
+                    BluetoothOppUtility.closeSendFileInfo(info.mUri);
                     return;
                 }
             }
@@ -867,6 +860,7 @@ public class BluetoothOppService extends Service {
                     if (mServerTransfer == null) {
                         Log.e(TAG, "Unexpected error! mServerTransfer is null");
                     } else if (batch.mId == mServerTransfer.getBatchId()) {
+                        if(V) Log.v(TAG," Stopping Inbound Transfer ");
                         mServerTransfer.stop();
                     } else {
                         Log.e(TAG, "Unexpected error! batch id " + batch.mId
@@ -878,6 +872,94 @@ public class BluetoothOppService extends Service {
                 removeBatch(batch);
             }
         }
+    }
+
+    private void removePendingTransfer() {
+        if (V) Log.v(TAG, "Remove pending share");
+        Cursor cursor = null;
+        try {
+            cursor = getContentResolver().query(BluetoothShare.CONTENT_URI, null, null,
+                null, BluetoothShare._ID);
+        } catch (SQLiteException e) {
+            if (cursor != null){
+                cursor.close();
+            }
+            cursor = null;
+            Log.e(TAG, "UpdateThread: " + e);
+        } catch (CursorWindowAllocationException e) {
+            cursor = null;
+            Log.e(TAG, "UpdateThread: " + e);
+        }
+
+        if (cursor == null) {
+            return;
+        }
+
+        cursor.moveToFirst();
+        int arrayPos = 0;
+        boolean isAfterLast = cursor.isAfterLast();
+
+        while (!isAfterLast || arrayPos < mShares.size()) {
+            String uriString = cursor.getString(cursor.getColumnIndexOrThrow(BluetoothShare.URI));
+            Uri uri;
+            if (uriString != null) {
+                uri = Uri.parse(uriString);
+                Log.d(TAG, "removeShare parsed URI: " + uri);
+            } else {
+                uri = null;
+                Log.e(TAG, "removeShare found null URI at cursor!");
+            }
+            BluetoothOppShareInfo info = new BluetoothOppShareInfo(
+                cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare._ID)),
+                uri,
+                cursor.getString(cursor.getColumnIndexOrThrow(BluetoothShare.FILENAME_HINT)),
+                cursor.getString(cursor.getColumnIndexOrThrow(BluetoothShare._DATA)),
+                cursor.getString(cursor.getColumnIndexOrThrow(BluetoothShare.MIMETYPE)),
+                cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare.DIRECTION)),
+                cursor.getString(cursor.getColumnIndexOrThrow(BluetoothShare.DESTINATION)),
+                cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare.VISIBILITY)),
+                cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare.USER_CONFIRMATION)),
+                cursor.getInt(cursor.getColumnIndexOrThrow(BluetoothShare.STATUS)),
+                cursor.getLong(cursor.getColumnIndexOrThrow(BluetoothShare.TOTAL_BYTES)),
+                cursor.getLong(cursor.getColumnIndexOrThrow(BluetoothShare.CURRENT_BYTES)),
+                cursor.getLong(cursor.getColumnIndexOrThrow(BluetoothShare.TIMESTAMP)),
+                cursor.getInt(cursor.getColumnIndexOrThrow(Constants.MEDIA_SCANNED)) != Constants.MEDIA_SCANNED_NOT_SCANNED);
+
+            if (V) {
+                Log.v(TAG, "Service remove entry");
+                Log.v(TAG, "ID      : " + info.mId);
+                // Log.v(TAG, "URI     : " + ((info.mUri != null) ? "yes" : "no"));
+                Log.v(TAG, "URI     : " + info.mUri);
+                Log.v(TAG, "HINT    : " + info.mHint);
+                Log.v(TAG, "FILENAME: " + info.mFilename);
+                Log.v(TAG, "MIMETYPE: " + info.mMimetype);
+                Log.v(TAG, "DIRECTION: " + info.mDirection);
+                Log.v(TAG, "DESTINAT: " + info.mDestination);
+                Log.v(TAG, "VISIBILI: " + info.mVisibility);
+                Log.v(TAG, "CONFIRM : " + info.mConfirm);
+                Log.v(TAG, "STATUS  : " + info.mStatus);
+                Log.v(TAG, "TOTAL   : " + info.mTotalBytes);
+                Log.v(TAG, "CURRENT : " + info.mCurrentBytes);
+                Log.v(TAG, "TIMESTAMP : " + info.mTimestamp);
+                Log.v(TAG, "SCANNED : " + info.mMediaScanned);
+            }
+
+            if (info.isReadyToStart()) {
+                if (info.mDirection == BluetoothShare.DIRECTION_OUTBOUND) {
+                    BluetoothOppSendFileInfo sendFileInfo = BluetoothOppUtility.getSendFileInfo(
+                        info.mUri);
+                    Constants.updateShareStatus(this, info.mId, BluetoothShare.STATUS_BAD_REQUEST);
+                    BluetoothOppUtility.closeSendFileInfo(info.mUri);
+                }
+            }
+
+            ++arrayPos;
+            cursor.moveToNext();
+            isAfterLast = cursor.isAfterLast();
+        }
+        cursor.close();
+        if (V) Log.v(TAG, "Freeing cursor: " + cursor);
+        cursor = null;
     }
 
     /**
@@ -949,6 +1031,10 @@ public class BluetoothOppService extends Service {
     }
 
     private void removeBatch(BluetoothOppBatch batch) {
+        if (batch == null) {
+            if (V) Log.v(TAG, "batch is null");
+            return;
+        }
         if (V) Log.v(TAG, "Remove batch " + batch.mId);
         mBatchs.remove(batch);
         BluetoothOppBatch nextBatch;
@@ -1022,35 +1108,49 @@ public class BluetoothOppService extends Service {
     private static void trimDatabase(ContentResolver contentResolver) {
         final String INVISIBLE = BluetoothShare.VISIBILITY + "=" +
                 BluetoothShare.VISIBILITY_HIDDEN;
-
+        int delNum;
         // remove the invisible/complete/outbound shares
         final String WHERE_INVISIBLE_COMPLETE_OUTBOUND = BluetoothShare.DIRECTION + "="
                 + BluetoothShare.DIRECTION_OUTBOUND + " AND " + BluetoothShare.STATUS + ">="
                 + BluetoothShare.STATUS_SUCCESS + " AND " + INVISIBLE;
-        int delNum = contentResolver.delete(BluetoothShare.CONTENT_URI,
-                WHERE_INVISIBLE_COMPLETE_OUTBOUND, null);
-        if (V) Log.v(TAG, "Deleted complete outbound shares, number =  " + delNum);
+        try {
+            delNum = contentResolver.delete(BluetoothShare.CONTENT_URI,
+                    WHERE_INVISIBLE_COMPLETE_OUTBOUND, null);
+            if (V) Log.v(TAG, "Deleted complete outbound shares, number =  " + delNum);
+        } catch (SQLiteException e) {
+            Log.e(TAG, "trimDatabase: could not deleted complete outbound shares: " + e);
+        }
 
         // remove the invisible/finished/inbound/failed shares
         final String WHERE_INVISIBLE_COMPLETE_INBOUND_FAILED = BluetoothShare.DIRECTION + "="
                 + BluetoothShare.DIRECTION_INBOUND + " AND " + BluetoothShare.STATUS + ">"
                 + BluetoothShare.STATUS_SUCCESS + " AND " + INVISIBLE;
-        delNum = contentResolver.delete(BluetoothShare.CONTENT_URI,
-                WHERE_INVISIBLE_COMPLETE_INBOUND_FAILED, null);
-        if (V) Log.v(TAG, "Deleted complete inbound failed shares, number = " + delNum);
+        try {
+            delNum = contentResolver.delete(BluetoothShare.CONTENT_URI,
+                    WHERE_INVISIBLE_COMPLETE_INBOUND_FAILED, null);
+            if (V) Log.v(TAG, "Deleted complete inbound failed shares, number = " + delNum);
+        } catch (SQLiteException e) {
+            Log.e(TAG, "trimDatabase: could not deleted complete inbound failed shares: " + e);
+        }
 
         final String WHERE_INBOUND_INTERRUPTED_ON_POWER_OFF = BluetoothShare.DIRECTION + "="
                 + BluetoothShare.DIRECTION_INBOUND + " AND " + BluetoothShare.STATUS + "="
                 + BluetoothShare.STATUS_RUNNING;
 
-        Cursor cursorToFile;
+        Cursor cursorToFile = null;
         try {
             cursorToFile = contentResolver.query(BluetoothShare.CONTENT_URI,
                 new String[] { BluetoothShare._DATA },
                 WHERE_INBOUND_INTERRUPTED_ON_POWER_OFF, null, null);
         } catch (SQLiteException e) {
-                cursorToFile = null;
-                Log.e(TAG, "SQLite exception: " + e);
+            if (cursorToFile != null) {
+                cursorToFile.close();
+            }
+            cursorToFile = null;
+            Log.e(TAG, "trimDatabase: " + e);
+        } catch (CursorWindowAllocationException e) {
+            cursorToFile = null;
+            Log.e(TAG, "trimDatabase: " + e);
         }
 
         // remove the share and the respective file which was interrupted by battery
@@ -1074,23 +1174,33 @@ public class BluetoothOppService extends Service {
         final String WHERE_CONFIRMATION_PENDING_INBOUND = BluetoothShare.DIRECTION + "="
                 + BluetoothShare.DIRECTION_INBOUND + " AND " + BluetoothShare.USER_CONFIRMATION
                 + "=" + BluetoothShare.USER_CONFIRMATION_PENDING;
-        delNum = contentResolver.delete(BluetoothShare.CONTENT_URI,
-                 WHERE_CONFIRMATION_PENDING_INBOUND, null);
-        if (V) Log.v(TAG, "Deleted unconfirmed incoming shares, number = " + delNum);
+        try {
+            delNum = contentResolver.delete(BluetoothShare.CONTENT_URI,
+                    WHERE_CONFIRMATION_PENDING_INBOUND, null);
+            if (V) Log.v(TAG, "Deleted unconfirmed incoming shares, number = " + delNum);
+        } catch (SQLiteException e) {
+            Log.e(TAG, "trimDatabase: could not deleted unconfirmed incoming shares " + e);
+        }
 
         // Only keep the inbound and successful shares for LiverFolder use
         // Keep the latest 1000 to easy db query
         final String WHERE_INBOUND_SUCCESS = BluetoothShare.DIRECTION + "="
                 + BluetoothShare.DIRECTION_INBOUND + " AND " + BluetoothShare.STATUS + "="
                 + BluetoothShare.STATUS_SUCCESS + " AND " + INVISIBLE;
-        Cursor cursor;
+        Cursor cursor = null;
         try {
             cursor = contentResolver.query(BluetoothShare.CONTENT_URI, new String[] {
                 BluetoothShare._ID
                 }, WHERE_INBOUND_SUCCESS, null, BluetoothShare._ID); // sort by id
         } catch (SQLiteException e) {
+            if (cursor != null){
+                cursor.close();
+            }
             cursor = null;
-            Log.e(TAG, "SQLite exception: " + e);
+            Log.e(TAG, "trimDatabase: " + e);
+        } catch (CursorWindowAllocationException e) {
+            cursor = null;
+            Log.e(TAG, "trimDatabase: " + e);
         }
 
         if (cursor == null) {

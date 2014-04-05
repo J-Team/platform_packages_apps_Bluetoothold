@@ -33,6 +33,7 @@ static jmethodID method_getElementAttr;
 static jmethodID method_registerNotification;
 static jmethodID method_volumeChangeCallback;
 static jmethodID method_handlePassthroughCmd;
+static jmethodID method_handlePassthroughRsp;
 static jmethodID method_getFolderItems;
 static jmethodID method_setAddressedPlayer;
 static jmethodID method_onListPlayerAttributeValues;
@@ -40,6 +41,7 @@ static jmethodID method_onGetPlayerAttributeValues;
 static jmethodID method_setPlayerAppSetting;
 static jmethodID method_getplayerattribute_text;
 static jmethodID method_getplayervalue_text;
+static jmethodID method_onConnectionStateChanged;
 
 static const btrc_interface_t *sBluetoothAvrcpInterface = NULL;
 static jobject mCallbacksObj = NULL;
@@ -75,6 +77,7 @@ static void btavrcp_remote_features_callback(bt_bdaddr_t* bd_addr, btrc_remote_f
     sCallbackEnv->SetByteArrayRegion(addr, 0, sizeof(bt_bdaddr_t), (jbyte*) bd_addr);
     sCallbackEnv->CallVoidMethod(mCallbacksObj, method_getRcFeatures, addr, (jint)features);
     checkAndClearExceptionFromCallback(sCallbackEnv, __FUNCTION__);
+    sCallbackEnv->DeleteLocalRef(addr);
 }
 
 static void btavrcp_get_play_status_callback() {
@@ -279,6 +282,20 @@ static void btavrcp_passthrough_command_callback(int id, int pressed) {
     checkAndClearExceptionFromCallback(sCallbackEnv, __FUNCTION__);
 }
 
+static void btavrcp_passthrough_response_callback(int id, int pressed) {
+    ALOGI("%s", __FUNCTION__);
+    ALOGI("id: %d, pressed: %d", id, pressed);
+
+    if (!checkCallbackThread()) {
+        ALOGE("Callback: '%s' is not called on the correct thread", __FUNCTION__);
+        return;
+    }
+
+    sCallbackEnv->CallVoidMethod(mCallbacksObj, method_handlePassthroughRsp, (jint)id,
+                                                                             (jint)pressed);
+    checkAndClearExceptionFromCallback(sCallbackEnv, __FUNCTION__);
+}
+
 static void btavrcp_set_addressed_player_callback(uint32_t player_id) {
     ALOGI("%s", __FUNCTION__);
     ALOGI("player id: %d", player_id);
@@ -292,6 +309,33 @@ static void btavrcp_set_addressed_player_callback(uint32_t player_id) {
 
     checkAndClearExceptionFromCallback(sCallbackEnv, __FUNCTION__);
 }
+
+static void btavrcp_connection_state_callback(int state, bt_bdaddr_t* bd_addr) {
+    jbyteArray addr;
+
+    ALOGI("%s", __FUNCTION__);
+    ALOGI("conn state: %d", state);
+
+    if (!checkCallbackThread()) {                                       \
+        ALOGE("Callback: '%s' is not called on the correct thread", __FUNCTION__); \
+        return;                                                         \
+    }
+
+    addr = sCallbackEnv->NewByteArray(sizeof(bt_bdaddr_t));
+    if (!addr) {
+        ALOGE("Fail to new jbyteArray bd addr for connection state");
+        checkAndClearExceptionFromCallback(sCallbackEnv, __FUNCTION__);
+        return;
+    }
+
+    sCallbackEnv->SetByteArrayRegion(addr, 0, sizeof(bt_bdaddr_t), (jbyte*) bd_addr);
+    sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onConnectionStateChanged, (jint) state,
+                                 addr);
+    checkAndClearExceptionFromCallback(sCallbackEnv, __FUNCTION__);
+    sCallbackEnv->DeleteLocalRef(addr);
+}
+
+
 static btrc_callbacks_t sBluetoothAvrcpCallbacks = {
     sizeof(sBluetoothAvrcpCallbacks),
     btavrcp_remote_features_callback,
@@ -306,8 +350,10 @@ static btrc_callbacks_t sBluetoothAvrcpCallbacks = {
     btavrcp_register_notification_callback,
     btavrcp_volume_change_callback,
     btavrcp_passthrough_command_callback,
+    btavrcp_passthrough_response_callback,
     btavrcp_get_folder_items_callback,
-    btavrcp_set_addressed_player_callback
+    btavrcp_set_addressed_player_callback,
+    btavrcp_connection_state_callback
 };
 
 static void classInitNative(JNIEnv* env, jclass clazz) {
@@ -336,6 +382,8 @@ static void classInitNative(JNIEnv* env, jclass clazz) {
 
     method_handlePassthroughCmd =
         env->GetMethodID(clazz, "handlePassthroughCmd", "(II)V");
+    method_handlePassthroughRsp =
+        env->GetMethodID(clazz, "handlePassthroughRsp", "(II)V");
 
     //setAddressedPlayer: attributes to pass: Player ID
     method_setAddressedPlayer =
@@ -344,6 +392,9 @@ static void classInitNative(JNIEnv* env, jclass clazz) {
     //getFolderItems: attributes to pass: Scope, Start, End, Attr Cnt
     method_getFolderItems =
         env->GetMethodID(clazz, "getFolderItems", "(BIII)V");
+
+    method_onConnectionStateChanged =
+        env->GetMethodID(clazz, "onConnectionStateChanged", "(I[B)V");
 
     ALOGI("%s: succeeds", __FUNCTION__);
 }
@@ -482,6 +533,7 @@ static jboolean getPlayerAppValueRspNative(JNIEnv *env ,jobject object , jbyte n
     }
     attr = env->GetByteArrayElements(value, NULL);
     if (!attr) {
+        delete[] pAttrs;
         jniThrowIOException(env, EINVAL);
         return JNI_FALSE;
     }
@@ -520,7 +572,7 @@ static jboolean SendCurrentPlayerValueRspNative(JNIEnv *env, jobject object ,
     }
     attr = env->GetByteArrayElements(value, NULL);
     if (!attr) {
-        delete[] pAttrs;
+        delete pAttrs;
         jniThrowIOException(env, EINVAL);
         return JNI_FALSE;
     }
@@ -534,7 +586,7 @@ static jboolean SendCurrentPlayerValueRspNative(JNIEnv *env, jobject object ,
                                                                      BT_STATUS_SUCCESS) {
         ALOGE("Failed get_element_attr_rsp, status: %d", status);
     }
-    delete[] pAttrs;
+    delete pAttrs;
     env->ReleaseByteArrayElements(value, attr, 0);
     return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
@@ -569,6 +621,10 @@ static jboolean sendSettingsTextRspNative(JNIEnv *env, jobject object, jint num_
         return JNI_FALSE;
     }
     pAttrs = new btrc_player_setting_text_t[num_attr];
+    if (!pAttrs) {
+        ALOGE("sendSettingsTextRspNative: not have enough memeory");
+        return JNI_FALSE;
+    }
     arr = env->GetByteArrayElements(attr, NULL);
     if (!arr) {
         delete[] pAttrs;
@@ -622,6 +678,10 @@ static jboolean sendValueTextRspNative(JNIEnv *env, jobject object, jint num_att
         return JNI_FALSE;
     }
     pAttrs = new btrc_player_setting_text_t[num_attr];
+    if (!pAttrs) {
+        ALOGE("sendValueTextRspNative: not have enough memeory");
+        return JNI_FALSE;
+    }
     arr = env->GetByteArrayElements(attr, NULL);
     if (!arr) {
         delete[] pAttrs;
@@ -742,7 +802,7 @@ static jboolean registerNotificationPlayerAppRspNative(JNIEnv *env, jobject obje
     }
     attr = env->GetByteArrayElements(value, NULL);
     if (!attr) {
-        delete[] param;
+        delete param;
         jniThrowIOException(env, EINVAL);
         return JNI_FALSE;
     }
@@ -758,7 +818,7 @@ static jboolean registerNotificationPlayerAppRspNative(JNIEnv *env, jobject obje
                                                                     BT_STATUS_SUCCESS) {
         ALOGE("Failed get_element_attr_rsp, status: %d", status);
     }
-    delete[] param;
+    delete param;
     env->ReleaseByteArrayElements(value, attr, 0);
     return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
@@ -836,6 +896,24 @@ static jboolean setVolumeNative(JNIEnv *env, jobject object, jint volume) {
 
     if ((status = sBluetoothAvrcpInterface->set_volume((uint8_t)volume)) != BT_STATUS_SUCCESS) {
         ALOGE("Failed set_volume, status: %d", status);
+    }
+
+    return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
+}
+
+static jboolean sendPassThroughCommandNative(JNIEnv *env, jobject object,
+                                                    jint key_code, jint key_state) {
+    bt_status_t status;
+
+    if (!sBluetoothAvrcpInterface) return JNI_FALSE;
+
+    ALOGI("%s: sBluetoothAvrcpInterface: %p", __FUNCTION__, sBluetoothAvrcpInterface);
+
+    ALOGI("key_code: %d, key_state: %d", key_code, key_state);
+
+    if ((status = sBluetoothAvrcpInterface->send_pass_through_cmd((uint8_t)key_code,
+                                        (uint8_t)key_state))!= BT_STATUS_SUCCESS) {
+        ALOGE("Failed sending passthru command, status: %d", status);
     }
 
     return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
@@ -1009,6 +1087,8 @@ static JNINativeMethod sMethods[] = {
      (void *) registerNotificationRspAddressedPlayerChangedNative},
     {"registerNotificationRspAvailablePlayersChangedNative", "(I)Z",
      (void *) registerNotificationRspAvailablePlayersChangedNative},
+    {"sendPassThroughCommandNative", "(II)Z",
+     (void *) sendPassThroughCommandNative},
 };
 
 int register_com_android_bluetooth_avrcp(JNIEnv* env)

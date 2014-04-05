@@ -59,14 +59,19 @@ import android.provider.Settings;
 public class BluetoothOppLauncherActivity extends Activity {
     private static final String TAG = "BluetoothLauncherActivity";
     private static final boolean D = Constants.DEBUG;
-    private static final boolean V = Constants.VERBOSE;
+    private static final boolean V = Log.isLoggable(Constants.TAG, Log.VERBOSE) ? true : false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         Intent intent = getIntent();
-        String action = intent.getAction();
+        String action = (intent == null) ? null : intent.getAction();
+        if (action == null) {
+            Log.e(TAG, "Unexpected error! action is null");
+            finish();
+            return;
+        }
 
         if (action.equals(Intent.ACTION_SEND) || action.equals(Intent.ACTION_SEND_MULTIPLE)) {
             //Check if Bluetooth is available in the beginning instead of at the end

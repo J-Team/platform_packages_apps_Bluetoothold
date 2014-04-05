@@ -56,6 +56,7 @@ static jmethodID method_onCmdResult;
 static jmethodID method_onSubscriberInfo;
 static jmethodID method_onInBandRing;
 static jmethodID method_onLastVoiceTagNumber;
+static jmethodID method_onRingIndication;
 
 static bool checkCallbackThread() {
     // Always fetch the latest callbackEnv from AdapterService.
@@ -245,6 +246,12 @@ static void last_voice_tag_number_cb (const char *number) {
     sCallbackEnv->DeleteLocalRef(js_number);
 }
 
+static void ring_indication_cb () {
+    CHECK_CALLBACK_ENV
+    sCallbackEnv->CallVoidMethod(mCallbacksObj, method_onRingIndication);
+    checkAndClearExceptionFromCallback(sCallbackEnv, __FUNCTION__);
+}
+
 static bthf_client_callbacks_t sBluetoothHfpClientCallbacks = {
     sizeof(sBluetoothHfpClientCallbacks),
     connection_state_cb,
@@ -267,6 +274,7 @@ static bthf_client_callbacks_t sBluetoothHfpClientCallbacks = {
     subscriber_info_cb,
     in_band_ring_cb,
     last_voice_tag_number_cb,
+    ring_indication_cb,
 };
 
 static void classInitNative(JNIEnv* env, jclass clazz) {
@@ -291,6 +299,7 @@ static void classInitNative(JNIEnv* env, jclass clazz) {
     method_onInBandRing = env->GetMethodID(clazz, "onInBandRing", "(I)V");
     method_onLastVoiceTagNumber = env->GetMethodID(clazz, "onLastVoiceTagNumber",
         "(Ljava/lang/String;)V");
+    method_onRingIndication = env->GetMethodID(clazz, "onRingIndication","()V");
 
     ALOGI("%s succeeds", __FUNCTION__);
 }
@@ -556,6 +565,24 @@ static jboolean requestLastVoiceTagNumberNative(JNIEnv *env, jobject object) {
     return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
 }
 
+static jboolean sendATCmdNative(JNIEnv *env, jobject object, jint cmd,
+                                jint val1, jint val2, jstring arg_str) {
+    bt_status_t status;
+    const char *arg;
+
+    if (!sBluetoothHfpClientInterface) return JNI_FALSE;
+
+    arg = env->GetStringUTFChars(arg_str, NULL);
+
+    if ((status = sBluetoothHfpClientInterface->send_at_cmd(cmd,val1,val2,arg)) !=
+            BT_STATUS_SUCCESS) {
+        ALOGE("Failed to send cmd, status: %d", status);
+    }
+
+    env->ReleaseStringUTFChars(arg_str, arg);
+    return (status == BT_STATUS_SUCCESS) ? JNI_TRUE : JNI_FALSE;
+}
+
 static JNINativeMethod sMethods[] = {
     {"classInitNative", "()V", (void *) classInitNative},
     {"initializeNative", "()V", (void *) initializeNative},
@@ -576,6 +603,7 @@ static JNINativeMethod sMethods[] = {
     {"sendDtmfNative", "(B)Z", (void *) sendDtmfNative},
     {"requestLastVoiceTagNumberNative", "()Z",
         (void *) requestLastVoiceTagNumberNative},
+    {"sendATCmdNative", "(IIILjava/lang/String;)Z", (void *) sendATCmdNative},
 };
 
 int register_com_android_bluetooth_hfpclient(JNIEnv* env)

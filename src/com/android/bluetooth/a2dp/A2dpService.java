@@ -37,7 +37,7 @@ import java.util.Map;
  * @hide
  */
 public class A2dpService extends ProfileService {
-    private static final boolean DBG = false;
+    private static final boolean DBG = true;
     private static final String TAG="A2dpService";
 
     private A2dpStateMachine mStateMachine;
@@ -67,8 +67,12 @@ public class A2dpService extends ProfileService {
     }
 
     protected boolean stop() {
-        mStateMachine.doQuit();
-        mAvrcp.doQuit();
+        if (mStateMachine != null) {
+            mStateMachine.doQuit();
+        }
+        if (mAvrcp != null) {
+            mAvrcp.doQuit();
+        }
         return true;
     }
 
@@ -175,6 +179,12 @@ public class A2dpService extends ProfileService {
     public boolean setPriority(BluetoothDevice device, int priority) {
         enforceCallingOrSelfPermission(BLUETOOTH_ADMIN_PERM,
                                        "Need BLUETOOTH_ADMIN permission");
+
+        if ((mStateMachine.isConnectedSrc(device)) &&
+            (priority == BluetoothProfile.PRIORITY_AUTO_CONNECT)) {
+            if (DBG) Log.d(TAG,"Peer Device is SRC Ignore AutoConnect");
+            return false;
+        }
         Settings.Global.putInt(getContentResolver(),
             Settings.Global.getBluetoothA2dpSinkPriorityKey(device.getAddress()),
             priority);
@@ -190,6 +200,28 @@ public class A2dpService extends ProfileService {
             BluetoothProfile.PRIORITY_UNDEFINED);
         return priority;
     }
+
+    public boolean setLastConnectedA2dpSepType(BluetoothDevice device, int sepType) {
+        enforceCallingOrSelfPermission(BLUETOOTH_ADMIN_PERM,
+                                       "Need BLUETOOTH_ADMIN permission");
+
+        Log.d(TAG,"setLastConnectedA2dpSepType: " + sepType);
+
+        Settings.Global.putInt(getContentResolver(),
+            Settings.Global.getBluetoothLastConnectedA2dpSepTypeKey(device.getAddress()),
+            sepType);
+        return true;
+    }
+
+    public int getLastConnectedA2dpSepType(BluetoothDevice device) {
+        enforceCallingOrSelfPermission(BLUETOOTH_ADMIN_PERM,
+                                       "Need BLUETOOTH_ADMIN permission");
+        int sepType = Settings.Global.getInt(getContentResolver(),
+            Settings.Global.getBluetoothLastConnectedA2dpSepTypeKey(device.getAddress()),
+            BluetoothProfile.PROFILE_A2DP_UNDEFINED);
+        return sepType;
+    }
+
 
     /* Absolute volume implementation */
     public boolean isAvrcpAbsoluteVolumeSupported() {
@@ -209,6 +241,25 @@ public class A2dpService extends ProfileService {
                                        "Need BLUETOOTH permission");
         if (DBG) Log.d(TAG, "isA2dpPlaying(" + device + ")");
         return mStateMachine.isPlaying(device);
+    }
+
+    synchronized public void sendPassThroughCmd(int keyCode, int keyState) {
+        if (DBG) Log.d(TAG, "sendPassThroughCmd");
+        if (mAvrcp != null) {
+            mAvrcp.sendPassThroughCmd(keyCode, keyState);
+        } else {
+            Log.e(TAG,"mAvrcp is null");
+        }
+    }
+
+    synchronized boolean isAvrcpConnected(BluetoothDevice device) {
+        if (DBG) Log.d(TAG, "isAvrcpConnected");
+        if (mAvrcp != null) {
+            return mAvrcp.isAvrcpConnected(device);
+        } else {
+            Log.e(TAG,"mAvrcp is null");
+            return false;
+        }
     }
 
     //Binder object: Must be static class or memory leak may occur 
@@ -301,6 +352,20 @@ public class A2dpService extends ProfileService {
             A2dpService service = getService();
             if (service == null) return false;
             return service.isA2dpPlaying(device);
+        }
+
+        public boolean isAvrcpConnected(BluetoothDevice device) {
+            Log.v(TAG,"Binder Call: isAvrcpConnected: " + device.getAddress());
+            A2dpService service = getService();
+            if (service == null) return false;
+            return service.isAvrcpConnected(device);
+        }
+
+        public void sendPassThroughCmd(int keyCode, int keyState) {
+            Log.v(TAG,"Binder Call: sendPassThroughCmd");
+            A2dpService service = getService();
+            if (service == null) return;
+            service.sendPassThroughCmd(keyCode, keyState);
         }
     };
 }

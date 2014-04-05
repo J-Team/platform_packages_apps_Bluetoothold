@@ -81,19 +81,37 @@ public class GattService extends ProfileService {
      */
     private List<ServiceDeclaration> mServiceDeclarations = new ArrayList<ServiceDeclaration>();
 
-    private ServiceDeclaration addDeclaration() {
-        synchronized (mServiceDeclarations) {
-            mServiceDeclarations.add(new ServiceDeclaration());
+    /**
+     * Temporary App (active) service declaration queue
+     */
+    private HashMap<Integer, ServiceDeclaration> mActiveServiceDeclarations = new HashMap<Integer, ServiceDeclaration>();
+
+    private ServiceDeclaration addToActiveDeclaration(int serverIf) {
+        synchronized (mActiveServiceDeclarations) {
+            mActiveServiceDeclarations.put(serverIf, new ServiceDeclaration());
         }
-        return getActiveDeclaration();
+        return getActiveDeclaration(serverIf);
     }
 
-    private ServiceDeclaration getActiveDeclaration() {
-        synchronized (mServiceDeclarations) {
-            if (mServiceDeclarations.size() > 0)
-                return mServiceDeclarations.get(mServiceDeclarations.size() - 1);
+    private void removeFromActiveDeclaration(int serverIf) {
+        synchronized (mActiveServiceDeclarations) {
+            mActiveServiceDeclarations.remove(serverIf);
+        }
+    }
+
+    private ServiceDeclaration getActiveDeclaration(int serverIf) {
+        synchronized (mActiveServiceDeclarations) {
+            if (mActiveServiceDeclarations.size() > 0)
+                return mActiveServiceDeclarations.get(serverIf);
         }
         return null;
+    }
+
+
+    private void addToPendingDeclaration(ServiceDeclaration serviceDeclaration) {
+        synchronized (mServiceDeclarations) {
+            mServiceDeclarations.add(serviceDeclaration);
+        }
     }
 
     private ServiceDeclaration getPendingDeclaration() {
@@ -165,6 +183,7 @@ public class GattService extends ProfileService {
         mScanQueue.clear();
         mHandleMap.clear();
         mServiceDeclarations.clear();
+        mActiveServiceDeclarations.clear();
         mReliableQueue.clear();
         return true;
     }
@@ -904,7 +923,14 @@ public class GattService extends ProfileService {
             LeScanRequestArbitrator.instance().RequestLeScan(LeScanRequestArbitrator.LE_NORMAL_SCAN_TYPE)) {
             if (DBG) Log.d(TAG, "startScan() - adding client=" + appIf);
             mScanQueue.add(new ScanClient(appIf, isServer));
-            gattClientScanNative(appIf, true);
+            if(mScanQueue.size()==1)//start scan only if it is not already started
+            {
+                gattClientScanNative(appIf, true);
+            }
+            else
+            {
+                Log.d(TAG, "startScan scan already in progress for appifs-queue=" + mScanQueue.size());
+            }
         }
     }
 
@@ -917,7 +943,14 @@ public class GattService extends ProfileService {
             LeScanRequestArbitrator.instance().RequestLeScan(LeScanRequestArbitrator.LE_NORMAL_SCAN_TYPE)) {
             if (DBG) Log.d(TAG, "startScanWithUuids() - adding client=" + appIf);
             mScanQueue.add(new ScanClient(appIf, isServer, uuids));
-            gattClientScanNative(appIf, true);
+            if(mScanQueue.size()==1)//start scan only if it is not already started
+            {
+                gattClientScanNative(appIf, true);
+            }
+            else
+            {
+                Log.d(TAG, "startScanWithUuids scan already in progress for appifs-queue=" + mScanQueue.size());
+            }
         }
     }
 
@@ -1404,8 +1437,9 @@ public class GattService extends ProfileService {
                                  int minHandles, UUID srvcUuid) {
         enforceCallingOrSelfPermission(BLUETOOTH_PERM, "Need BLUETOOTH permission");
 
-        if (DBG) Log.d(TAG, "beginServiceDeclaration() - uuid=" + srvcUuid);
-        ServiceDeclaration serviceDeclaration = addDeclaration();
+        if (DBG) Log.d(TAG, "beginServiceDeclaration() - uuid=" + srvcUuid +
+                                                       " serverIf=" + serverIf);
+        ServiceDeclaration serviceDeclaration = addToActiveDeclaration(serverIf);
         serviceDeclaration.addService(srvcUuid, srvcType, srvcInstanceId, minHandles);
     }
 
@@ -1414,7 +1448,7 @@ public class GattService extends ProfileService {
         enforceCallingOrSelfPermission(BLUETOOTH_PERM, "Need BLUETOOTH permission");
 
         if (DBG) Log.d(TAG, "addIncludedService() - uuid=" + srvcUuid);
-        getActiveDeclaration().addIncludedService(srvcUuid, srvcType, srvcInstanceId);
+        getActiveDeclaration(serverIf).addIncludedService(srvcUuid, srvcType, srvcInstanceId);
     }
 
     void addCharacteristic(int serverIf, UUID charUuid, int properties,
@@ -1422,28 +1456,31 @@ public class GattService extends ProfileService {
         enforceCallingOrSelfPermission(BLUETOOTH_PERM, "Need BLUETOOTH permission");
 
         if (DBG) Log.d(TAG, "addCharacteristic() - uuid=" + charUuid);
-        getActiveDeclaration().addCharacteristic(charUuid, properties, permissions);
+        getActiveDeclaration(serverIf).addCharacteristic(charUuid, properties, permissions);
     }
 
     void addDescriptor(int serverIf, UUID descUuid, int permissions) {
         enforceCallingOrSelfPermission(BLUETOOTH_PERM, "Need BLUETOOTH permission");
 
         if (DBG) Log.d(TAG, "addDescriptor() - uuid=" + descUuid);
-        getActiveDeclaration().addDescriptor(descUuid, permissions);
+        getActiveDeclaration(serverIf).addDescriptor(descUuid, permissions);
     }
 
     void endServiceDeclaration(int serverIf) {
         enforceCallingOrSelfPermission(BLUETOOTH_PERM, "Need BLUETOOTH permission");
 
-        if (DBG) Log.d(TAG, "endServiceDeclaration()");
+        if (DBG) Log.d(TAG, "endServiceDeclaration()" + " serverIf=" + serverIf);
 
-        if (getActiveDeclaration() == getPendingDeclaration()) {
+        addToPendingDeclaration(getActiveDeclaration(serverIf));
+
+        if (getActiveDeclaration(serverIf) == getPendingDeclaration()) {
             try {
                 continueServiceDeclaration(serverIf, (byte)0, 0);
             } catch (RemoteException e) {
                 Log.e(TAG,""+e);
             }
         }
+        removeFromActiveDeclaration(serverIf);
     }
 
     void removeService(int serverIf, int srvcType,

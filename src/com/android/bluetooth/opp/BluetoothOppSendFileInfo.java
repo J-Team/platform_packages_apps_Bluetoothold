@@ -37,6 +37,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
+import android.database.CursorWindowAllocationException;
 import android.database.sqlite.SQLiteException;
 import android.net.Uri;
 import android.provider.OpenableColumns;
@@ -56,7 +57,7 @@ public class BluetoothOppSendFileInfo {
 
     private static final boolean D = Constants.DEBUG;
 
-    private static final boolean V = Constants.VERBOSE;
+    private static final boolean V = Log.isLoggable(Constants.TAG, Log.VERBOSE) ? true : false;
 
     /** Reusable SendFileInfo for error status. */
     static final BluetoothOppSendFileInfo SEND_FILE_INFO_ERROR = new BluetoothOppSendFileInfo(
@@ -110,14 +111,21 @@ public class BluetoothOppSendFileInfo {
         // bluetooth
         if ("content".equals(scheme)) {
             contentType = contentResolver.getType(uri);
-            Cursor metadataCursor;
+            Cursor metadataCursor = null;
             try {
                 metadataCursor = contentResolver.query(uri, new String[] {
                         OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE
                 }, null, null, null);
             } catch (SQLiteException e) {
                 // some content providers don't support the DISPLAY_NAME or SIZE columns
+                if (metadataCursor != null) {
+                    metadataCursor.close();
+                }
                 metadataCursor = null;
+                Log.e(TAG, "generateFileInfo: " + e);
+            } catch (CursorWindowAllocationException e) {
+                metadataCursor = null;
+                Log.e(TAG, "generateFileInfo: " + e);
             }
             if (metadataCursor != null) {
                 try {

@@ -62,7 +62,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
 
     private static final boolean D = BluetoothPbapService.DEBUG;
 
-    private static final boolean V = BluetoothPbapService.VERBOSE;
+    private static final boolean V = Log.isLoggable(BluetoothPbapService.LOG_TAG, Log.VERBOSE) ? true : false;
 
     private static final int UUID_LENGTH = 16;
 
@@ -700,7 +700,8 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                     if (D) Log.d(TAG, "currentValue=" + currentValue);
                     if (currentValue.equals(compareValue)) {
                         itemsFound++;
-                        currentValue = currentValue.substring(0, currentValue.lastIndexOf(','));
+                        if (currentValue.contains(","))
+                           currentValue = currentValue.substring(0, currentValue.lastIndexOf(','));
                         writeVCardEntry(pos, currentValue,result);
                     }
                 }
@@ -718,7 +719,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                 if (currentValue.contains(","))
                     currentValue = currentValue.substring(0, currentValue.lastIndexOf(','));
 
-                if (searchValue == null || (currentValue.toLowerCase()).equals(compareValue.toLowerCase())) {
+                if (searchValue.isEmpty() || ((currentValue.toLowerCase()).equals(compareValue.toLowerCase()))) {
                     itemsFound++;
                     writeVCardEntry(pos, currentValue,result);
                 }
@@ -950,7 +951,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
        } else if (appParamValue.needTag == ContentType.SIM_PHONEBOOK) {
             if (intIndex < 0 || intIndex >= size) {
                 Log.w(TAG, "The requested vcard is not acceptable! name= " + name);
-                return ResponseCodes.OBEX_HTTP_OK;
+                return ResponseCodes.OBEX_HTTP_NOT_FOUND;
             } else if (intIndex == 0) {
                 // For PB_PATH, 0.vcf is the phone number of this phone.
                 String ownerVcard = mVcardManager.getOwnerPhoneNumberVcard(vcard21, null);

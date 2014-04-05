@@ -46,6 +46,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.database.Cursor;
+import android.database.CursorWindowAllocationException;
 import android.database.sqlite.SQLiteException;
 import android.util.Log;
 
@@ -61,7 +62,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class BluetoothOppUtility {
     private static final String TAG = "BluetoothOppUtility";
     private static final boolean D = Constants.DEBUG;
-    private static final boolean V = Constants.VERBOSE;
+    private static final boolean V = Log.isLoggable(Constants.TAG, Log.VERBOSE) ? true : false;
 
     private static final ConcurrentHashMap<Uri, BluetoothOppSendFileInfo> sSendFileMap
             = new ConcurrentHashMap<Uri, BluetoothOppSendFileInfo>();
@@ -69,12 +70,18 @@ public class BluetoothOppUtility {
     public static BluetoothOppTransferInfo queryRecord(Context context, Uri uri) {
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         BluetoothOppTransferInfo info = new BluetoothOppTransferInfo();
-        Cursor cursor;
+        Cursor cursor = null;
         try {
             cursor = context.getContentResolver().query(uri, null, null, null, null);
         } catch (SQLiteException e) {
+             if (cursor != null){
+                cursor.close();
+            }
             cursor = null;
-            Log.e(TAG, "SQLite exception: " + e);
+            Log.e(TAG, "queryRecord: " + e);
+        } catch (CursorWindowAllocationException e) {
+            cursor = null;
+            Log.e(TAG, "queryRecord: " + e);
         }
 
         if (cursor != null) {
@@ -105,7 +112,7 @@ public class BluetoothOppUtility {
                 info.mFileUri = cursor.getString(cursor.getColumnIndexOrThrow(BluetoothShare.URI));
 
                 if (info.mFileUri != null) {
-                    Uri u = Uri.parse(info.mFileUri);
+                    Uri u = originalUri(Uri.parse(info.mFileUri));
                     info.mFileType = context.getContentResolver().getType(u);
                 } else {
                     Uri u = Uri.parse(info.mFileName);
@@ -146,15 +153,21 @@ public class BluetoothOppUtility {
         ArrayList<String> uris = Lists.newArrayList();
         final String WHERE = BluetoothShare.TIMESTAMP + " == " + timeStamp;
 
-        Cursor metadataCursor;
+        Cursor metadataCursor = null;
         try {
             metadataCursor = context.getContentResolver().query(BluetoothShare.CONTENT_URI,
                 new String[] {
                     BluetoothShare._DATA
                 }, WHERE, null, BluetoothShare._ID);
         } catch (SQLiteException e) {
+           if (metadataCursor != null) {
+               metadataCursor.close();
+           }
            metadataCursor = null;
-           Log.e(TAG, "SQLite exception: " + e);
+           Log.e(TAG, "queryTransfersInBatch: " + e);
+        } catch (CursorWindowAllocationException e) {
+           metadataCursor = null;
+           Log.e(TAG, "queryTransfersInBatch: " + e);
         }
 
         if (metadataCursor == null) {
@@ -323,6 +336,26 @@ public class BluetoothOppUtility {
                 transInfo.mDeviceName);
     }
 
+    static Uri originalUri(Uri uri) {
+        String mUri = uri.toString();
+        int atIndex = mUri.lastIndexOf("@");
+        if (atIndex != -1) {
+            mUri = mUri.substring(0, atIndex);
+            uri = Uri.parse(mUri);
+        }
+        if (V) Log.v(TAG, "originalUri: " + uri);
+        return uri;
+    }
+
+    static Uri generateUri(Uri uri, BluetoothOppSendFileInfo sendFileInfo) {
+        String fileInfo = sendFileInfo.toString();
+        int atIndex = fileInfo.lastIndexOf("@");
+        fileInfo = fileInfo.substring(atIndex);
+        uri = Uri.parse(uri + fileInfo);
+        if (V) Log.v(TAG, "generateUri: " + uri);
+        return uri;
+    }
+
     static void putSendFileInfo(Uri uri, BluetoothOppSendFileInfo sendFileInfo) {
         if (D) Log.d(TAG, "putSendFileInfo: uri=" + uri + " sendFileInfo=" + sendFileInfo);
         sSendFileMap.put(uri, sendFileInfo);
@@ -334,12 +367,12 @@ public class BluetoothOppUtility {
         return (info != null) ? info : BluetoothOppSendFileInfo.SEND_FILE_INFO_ERROR;
     }
 
-    static void closeSendFileInfo(Uri uri, BluetoothOppSendFileInfo sendFileInfo) {
-        if (D) Log.d(TAG, "closeSendFileInfo: uri=" + uri + "sendFileInfo: " + sendFileInfo);
-        boolean removed = sSendFileMap.remove(uri, sendFileInfo);
-        if (removed && sendFileInfo != null && sendFileInfo.mInputStream != null) {
+    static void closeSendFileInfo(Uri uri) {
+        if (D) Log.d(TAG, "closeSendFileInfo: uri=" + uri);
+        BluetoothOppSendFileInfo info = sSendFileMap.remove(uri);
+        if (info != null && info.mInputStream != null) {
             try {
-                sendFileInfo.mInputStream.close();
+                info.mInputStream.close();
             } catch (IOException ignored) {
             }
         }
