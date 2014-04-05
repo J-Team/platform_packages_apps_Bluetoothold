@@ -52,7 +52,6 @@ namespace android {
 static jmethodID method_wipowerstateChangeCallback;
 static jmethodID method_wipowerAlertNotify;
 static jmethodID method_wipowerDataNotify;
-static jmethodID method_wipowerPowerNotify;
 
 static const wipower_interface_t *sWipowerInterface = NULL;
 static jobject sCallbacksObj;
@@ -83,11 +82,11 @@ static void wipower_alerts_cb(unsigned char alert_data) {
 }
 
 static void wipower_data_cb(wipower_dyn_data_t *alert_data) {
-    ALOGV("%s: wp data is: %x", __FUNCTION__, (unsigned int)alert_data);
+    ALOGV("%s: wp data is: %d", __FUNCTION__, alert_data);
     jbyteArray wp_data = NULL;
 
     CHECK_CALLBACK_ENV
-    wp_data =  sCallbackEnv->NewByteArray(sizeof(wipower_dyn_data_t));
+    wp_data =  sCallbackEnv->NewByteArray(sizeof(*alert_data));
     if (wp_data == NULL) {
         ALOGV("%s: alloc failure", __FUNCTION__);
         return;
@@ -96,26 +95,17 @@ static void wipower_data_cb(wipower_dyn_data_t *alert_data) {
     sCallbackEnv->SetByteArrayRegion(wp_data, 0, sizeof(wipower_dyn_data_t),
                                                 (jbyte*)alert_data);
 
-
     ALOGV("set value to byte array");
 
     sCallbackEnv->CallVoidMethod(sCallbacksObj, method_wipowerDataNotify, wp_data);
 
-    sCallbackEnv->DeleteLocalRef(wp_data);
-}
-
-static void wipower_power_cb(unsigned char alert_data) {
-    ALOGV("%s: alert_data is: %d", __FUNCTION__, alert_data);
-    CHECK_CALLBACK_ENV
-    sCallbackEnv->CallVoidMethod(sCallbacksObj, method_wipowerPowerNotify, (jint) alert_data);
 }
 
 wipower_callbacks_t sWipowerCallbacks = {
     sizeof(sWipowerCallbacks),
     wipower_state_changed_cb,
     wipower_alerts_cb,
-    wipower_data_cb,
-    wipower_power_cb
+    wipower_data_cb
 };
 
 
@@ -128,9 +118,6 @@ static void android_wipower_wipowerJNI_classInitNative(JNIEnv* env, jclass clazz
 
     method_wipowerDataNotify = env->GetMethodID(clazz, "wipowerDataNotify",
                                                              "([B)V");
-
-    method_wipowerPowerNotify = env->GetMethodID(clazz, "wipowerPowerNotify",
-                                                             "(B)V");
 }
 
 static void android_wipower_wipowerJNI_initNative (JNIEnv* env, jobject obj) {
@@ -146,12 +133,7 @@ static void android_wipower_wipowerJNI_initNative (JNIEnv* env, jobject obj) {
     //Get WiPower Interface
     sWipowerInterface = (const wipower_interface_t*)btInf->get_profile_interface(WIPOWER_PROFILE_ID);
 
-    ALOGE("%s: Get wipower interface: %x",__FUNCTION__, (unsigned int)sWipowerInterface);
-    //Initialize wipower interface
-    int ret = sWipowerInterface->init(&sWipowerCallbacks);
-
-    if (ret != 0)
-        ALOGE("wipower init failed");
+    ALOGE("%s: Get wipower interface: %x",__FUNCTION__, sWipowerInterface);
 
     sCallbacksObj = env->NewGlobalRef(obj);
 }
@@ -168,7 +150,7 @@ static jint android_wipower_wipowerJNI_enableNative
         return JNI_FALSE;
     }
 
-    int ret = sWipowerInterface->enable(enable);
+    int ret = sWipowerInterface->enable(&sWipowerCallbacks, enable);
 
     if (ret != 0) {
         ALOGE("wipower enable failed");
