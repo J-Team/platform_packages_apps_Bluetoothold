@@ -150,7 +150,7 @@ static jint android_wipower_wipowerJNI_enableNative
         return JNI_FALSE;
     }
 
-    int ret = sWipowerInterface->enable(&sWipowerCallbacks, enable);
+    int ret = sWipowerInterface->enable(enable);
 
     if (ret != 0) {
         ALOGE("wipower enable failed");
