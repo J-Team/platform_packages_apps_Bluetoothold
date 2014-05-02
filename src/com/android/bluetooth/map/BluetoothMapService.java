@@ -695,7 +695,7 @@ public class BluetoothMapService extends ProfileService {
                   Log.d(TAG, "mMasId is "+mMasId);
             }
             Context context = getApplicationContext();
-            if(VERBOSE) Log.d(TAG, "after getting application context");
+            Log.d(TAG, "after getting application context");
             if(mBluetoothMnsObexClient == null)
                 mBluetoothMnsObexClient = new BluetoothMnsObexClient(context, mRemoteDevice);
             mBluetoothMnsObexClient.initObserver(mSessionStatusHandler, mMasId);

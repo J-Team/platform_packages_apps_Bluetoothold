@@ -418,7 +418,6 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
         }
 
         emailBody = sb.toString();
-        if (V) Log.v(TAG, "emailBody is "+emailBody);
 
         if(emailBody != null) {
             String tmpBody = emailBody.replaceAll("END:MSG", "/END\\:MSG"); // Replace any occurrences of END:MSG with \END:MSG
@@ -744,6 +743,7 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
                    throw new IllegalArgumentException("Ill-formatted bMessage, no END:MSG");
                }
                setEmailBody(body.substring(beginMsg + "BEGIN:MSG".length(), endMsg - CRLF.length()));
+               break;
            } else {
                pos = next + CRLF.length();
            }
@@ -761,11 +761,11 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
              }
           } else {
              endVersionPos = (body.indexOf("--"+boundary+"--", beginVersionPos) - CRLF.length());
-          }
-          try {
-            setEmailBody(body.substring(beginVersionPos, endVersionPos));
-          } catch (IndexOutOfBoundsException e) {
-            throw new IllegalArgumentException("Ill-formatted bMessage, no end boundary");
+             try {
+                setEmailBody(body.substring(beginVersionPos, endVersionPos));
+             } catch (IndexOutOfBoundsException e) {
+               throw new IllegalArgumentException("Ill-formatted bMessage, no end boundary");
+             }
           }
        } else if(rfc822Flag == 1) {
           endVersionPos = (body.indexOf("--"+boundary+"--", beginVersionPos));
