@@ -295,7 +295,7 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
      * @param addresses the reformatted address substrings to encode.
      */
     public void encodeHeaderAddresses(StringBuilder sb, String headerName,
-            ArrayList<Rfc822Token> addresses) {
+            ArrayList<Rfc822Token> addresses) throws UnsupportedEncodingException {
         /* TODO: Do we need to encode the addresses if they contain illegal characters?
          * This depends of the outcome of errata 4176. The current spec. states to use UTF-8
          * where possible, but the RFCs states to use US-ASCII for the headers - hence encoding
@@ -312,7 +312,7 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
                 sb.append("\r\n "); // Append a FWS (folding whitespace)
                 lineLength = 0;
             }
-            sb.append(address.toString()).append(";");
+            sb.append(new String(address.toString().getBytes("UTF-8"),"UTF-8")).append(";");
             lineLength += partLength;
         }
         sb.append("\r\n");
@@ -344,7 +344,7 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
             sb.append("?=\r\n");
         }*/
         if (subject != null)
-            sb.append("Subject: ").append(subject).append("\r\n");
+            sb.append("Subject: ").append(new String(subject.getBytes("UTF-8"),"UTF-8")).append("\r\n");
         if(from != null)
             encodeHeaderAddresses(sb, "From: ", from); // This includes folding if needed.
         if(sender != null)
@@ -398,7 +398,6 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
                 .append("\r\n");
         sb.append("MIME Message").append("\r\n");
         sb.append("--"+boundary).append("\r\n");
-
         Log.v(TAG, "after encode header sb is "+ sb.toString());
 
         if (parts != null) {
@@ -474,17 +473,19 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
         encoding = "8BIT"; // The encoding used
 
         encodeHeaders(sb);
-        if(getIncludeAttachments() == false) {
-            for(MimePart part : parts) {
-                part.encodePlainText(sb); /* We call encode on all parts, to include a tag, where an attachment is missing. */
-            }
-        } else {
-            for(MimePart part : parts) {
-                count++;
-                part.encode(sb, getBoundary(), (count == parts.size()));
+
+        if(parts != null) {
+            if(getIncludeAttachments() == false) {
+                for(MimePart part : parts) {
+                    part.encodePlainText(sb); /* We call encode on all parts, to include a tag, where an attachment is missing. */
+                }
+            } else {
+                for(MimePart part : parts) {
+                    count++;
+                    part.encode(sb, getBoundary(), (count == parts.size()));
+                }
             }
         }
-
         mmsBody = sb.toString();
 
         if(mmsBody != null) {
@@ -699,7 +700,6 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
     }
     @Override
     public void parseBodyEmail(String body) throws IllegalArgumentException {
-
     int beginVersionPos = -1;
     int rfc822Flag = 0;
     int mimeFlag = 0;
@@ -721,8 +721,8 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
     int contentIndex = body.indexOf("Content-Type",pos1);
     if(contentIndex > 0) {
        contentType = parseContentTypeEmail(body, boundary);
-      if(contentType != null && contentType.trim().equalsIgnoreCase("message/rfc822")){
-         rfc822Flag = 1;
+       if(contentType != null && contentType.trim().equalsIgnoreCase("message/rfc822")){
+          rfc822Flag = 1;
       }
     }
     int pos = body.indexOf(CRLF, pos1) + CRLF.length();
@@ -739,11 +739,12 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
                if (beginMsg == -1) {
                    throw new IllegalArgumentException("Ill-formatted bMessage, no BEGIN:MSG");
                }
-               int endMsg = body.indexOf("END:MSG", beginMsg);
+               int endMsg = body.lastIndexOf("END:MSG", beginMsg);
                if (endMsg == -1) {
                    throw new IllegalArgumentException("Ill-formatted bMessage, no END:MSG");
                }
                setEmailBody(body.substring(beginMsg + "BEGIN:MSG".length(), endMsg - CRLF.length()));
+               break;
            } else {
                pos = next + CRLF.length();
            }
@@ -753,7 +754,7 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
        int endVersionPos;
        if(rfc822Flag == 0){
           if(mimeFlag == 0) {
-             endVersionPos = body.indexOf("END:MSG", beginVersionPos) ;
+             endVersionPos = body.lastIndexOf("END:MSG", beginVersionPos) ;
              if (endVersionPos != -1) {
                  setEmailBody(body.substring(beginVersionPos, (endVersionPos - CRLF.length())));
              } else {
@@ -761,11 +762,11 @@ public class BluetoothMapbMessageMmsEmail extends BluetoothMapbMessage {
              }
           } else {
              endVersionPos = (body.indexOf("--"+boundary+"--", beginVersionPos) - CRLF.length());
-          }
-          try {
-            setEmailBody(body.substring(beginVersionPos, endVersionPos));
-          } catch (IndexOutOfBoundsException e) {
-            throw new IllegalArgumentException("Ill-formatted bMessage, no end boundary");
+             try {
+                setEmailBody(body.substring(beginVersionPos, endVersionPos));
+             } catch (IndexOutOfBoundsException e) {
+               throw new IllegalArgumentException("Ill-formatted bMessage, no end boundary");
+             }
           }
        } else if(rfc822Flag == 1) {
           endVersionPos = (body.indexOf("--"+boundary+"--", beginVersionPos));

@@ -22,10 +22,10 @@ import java.util.Arrays;
 import java.util.Calendar;
 import android.os.PowerManager;
 
-import javax.obex.HeaderSet;
-import javax.obex.Operation;
-import javax.obex.ResponseCodes;
-import javax.obex.ServerRequestHandler;
+import javax.btobex.HeaderSet;
+import javax.btobex.Operation;
+import javax.btobex.ResponseCodes;
+import javax.btobex.ServerRequestHandler;
 
 import com.android.bluetooth.map.BluetoothMapUtils;
 import com.android.bluetooth.map.BluetoothMapUtils.TYPE;
@@ -853,7 +853,9 @@ public class BluetoothMapObexServer extends ServerRequestHandler {
             Log.w(TAG,"sendGetMessageRsp: IOException - sending OBEX_HTTP_BAD_REQUEST", e);
             return ResponseCodes.OBEX_HTTP_BAD_REQUEST;
         } catch (IllegalArgumentException e) {
-            Log.w(TAG,"sendGetMessageRsp: IllegalArgumentException (e.g. invalid handle) - sending OBEX_HTTP_BAD_REQUEST", e);
+            Log.w(TAG,
+                     "sendGetMessageRsp: IllegalArgumentException (e.g. invalid handle or charset) - sending OBEX_HTTP_BAD_REQUEST"
+                         , e);
             return ResponseCodes.OBEX_HTTP_BAD_REQUEST;
         }
 

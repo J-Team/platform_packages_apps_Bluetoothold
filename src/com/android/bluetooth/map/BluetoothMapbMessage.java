@@ -163,23 +163,23 @@ public abstract class BluetoothMapbMessage {
             return envLevel;
         }
 
-        public void encode(StringBuilder sb)
+        public void encode(StringBuilder sb) throws UnsupportedEncodingException
         {
             sb.append("BEGIN:VCARD").append("\r\n");
             sb.append("VERSION:").append(version).append("\r\n");
             if(version.equals("3.0") && formattedName != null)
             {
-                sb.append("FN:").append(formattedName).append("\r\n");
+                sb.append("FN:").append(new String(formattedName.getBytes("UTF-8"),"UTF-8")).append("\r\n");
             }
             if (name != null)
-                sb.append("N:").append(name).append("\r\n");
+                sb.append("N:").append(new String(name.getBytes("UTF-8"),"UTF-8")).append("\r\n");
             for(String phoneNumber : phoneNumbers)
             {
                 sb.append("TEL:").append(phoneNumber).append("\r\n");
             }
             for(String emailAddress : emailAddresses)
             {
-                sb.append("EMAIL:").append(emailAddress).append("\r\n");
+                sb.append("EMAIL:").append(new String(emailAddress.getBytes("UTF-8"),"UTF-8")).append("\r\n");
             }
             sb.append("END:VCARD").append("\r\n");
         }
@@ -419,17 +419,24 @@ public abstract class BluetoothMapbMessage {
         }
 
         public String getStringTerminator(String terminator) {
-           StringBuilder dataStr= new StringBuilder();
-           String lineCur = getLineTerminator();
-           while( lineCur != null && (!lineCur.equals(terminator)))
-           {
-               dataStr.append(lineCur);
-               if(! lineCur.equals("\r\n")) {
-                  dataStr.append("\r\n");
-               }
-               lineCur = getLineTerminator();
+            StringBuilder dataStr= new StringBuilder();
+            String str = null;
+            String lineCur = getLineTerminator();
+            while( lineCur != null)
+            {
+                dataStr.append(lineCur);
+                if(! lineCur.equals("\r\n")) {
+                   dataStr.append("\r\n");
+                }
+                lineCur = getLineTerminator();
            }
-           return dataStr.toString();
+
+           str = dataStr.toString();
+           if(terminator.equals("END:BBODY"))
+              str = str.substring(0,str.lastIndexOf("END:MSG"));
+           else
+              str = str.substring(0,str.lastIndexOf(terminator));
+           return str;
         }
     };
 
@@ -711,6 +718,7 @@ public abstract class BluetoothMapbMessage {
                     messages[i] = messages[i].trim();
                     parseMsgPart(messages[i]);
                 }
+                return;
             }
             line = reader.getLineEnforce();
         }
