@@ -212,8 +212,7 @@ public class BluetoothMnsObexClient {
     public void handleRegistration(int masId, int notificationStatus){
         Log.d(TAG, "handleRegistration( " + masId + ", " + notificationStatus + ")");
 
-        //if((isConnected() == false) &&
-        if((mEmailObserverRegistered | mObserverRegistered) == false &&
+        if((mEmailObserverRegistered == false) && (mObserverRegistered == false) &&
            (notificationStatus == BluetoothMapAppParams.NOTIFICATION_STATUS_YES)) {
             Log.d(TAG, "handleRegistration: connect");
             connect();
@@ -228,8 +227,10 @@ public class BluetoothMnsObexClient {
                  mObserver.unregisterObserver();
                  mObserverRegistered = false;
               }
-              //disconnect();
-              //handleRegisration disable should only disable registerobserver for masId NOT Disconnct the MNSOBEXCLIENT
+              if((mEmailObserverRegistered ==false) && (mObserverRegistered == false)) {
+                  Log.d(TAG, "handleRegistration: disconnect");
+                  disconnect();
+              }
         } else if(notificationStatus == BluetoothMapAppParams.NOTIFICATION_STATUS_YES) {
             /* Connect if we do not have a connection, and start the content observers providing
              * this thread as Handler.
@@ -296,10 +297,9 @@ public class BluetoothMnsObexClient {
         releaseMnsLock();
     }
 
-    public void  initObserver( int masInstanceId) {
+    public void  initObserver( Handler callback, int masInstanceId) {
         if(masInstanceId == 1 ){
-            mEmailObserver = new BluetoothMapContentEmailObserver(mContext);
-            //mEmailObserver = new BluetoothMapContentObserver(mContext);
+            mEmailObserver = new BluetoothMapContentEmailObserver(mContext,callback);
             mEmailObserver.init();
         }else {
             mObserver = new BluetoothMapContentObserver(mContext);

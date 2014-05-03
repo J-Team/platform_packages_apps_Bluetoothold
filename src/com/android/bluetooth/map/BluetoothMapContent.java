@@ -39,6 +39,8 @@ import android.provider.Telephony.Mms;
 import android.provider.Telephony.Sms;
 import android.telephony.TelephonyManager;
 import android.util.Log;
+import android.text.format.Time;
+import android.util.TimeFormatException;
 import com.android.emailcommon.provider.EmailContent;
 import com.android.emailcommon.provider.EmailContent.Message;
 import com.android.emailcommon.provider.EmailContent.MessageColumns;
@@ -442,7 +444,7 @@ public class BluetoothMapContent {
         } else if (fi.msgType == FilterInfo.TYPE_MMS) {
             read = c.getInt(c.getColumnIndex(Mms.READ));
         } else {
-            read = c.getColumnIndex(MessageColumns.FLAG_READ);
+            read = c.getInt(c.getColumnIndex(MessageColumns.FLAG_READ));
         }
         String setread = null;
         if (read == 1) {
@@ -602,8 +604,20 @@ public class BluetoothMapContent {
                 address = getAddressMms(mResolver, id, MMS_TO);
             } else {
                 int toIndex = c.getColumnIndex(MessageColumns.TO_LIST);
-                if (D) Log.d(TAG, "setRecipientAddressing: " +c.getString(toIndex));
                 address = c.getString(toIndex);
+                if (address.contains("")) {
+                    String[] recepientAddrStr = address.split("");
+                    if (recepientAddrStr !=null && recepientAddrStr.length > 0) {
+                        if (V){
+                            Log.v(TAG, " ::Recepient addressing split String 0:: " + recepientAddrStr[0]
+                                    + "::Recepient addressing split String 1:: " + recepientAddrStr[1]);
+                        }
+                        e.setRecipientAddressing(recepientAddrStr[0].trim());                    }
+                } else {
+                    if (D) Log.d(TAG, "setRecipientAddressing: " + address);
+                    e.setRecipientAddressing(address.trim());
+                }
+                return;
             }
             if (D) Log.d(TAG, "setRecipientAddressing: " + address);
             e.setRecipientAddressing(address);
@@ -665,8 +679,21 @@ public class BluetoothMapContent {
             } else {
                 int fromIndex = c.getColumnIndex(MessageColumns.FROM_LIST);
                 address = c.getString(fromIndex);
-                if (D) Log.d(TAG, "setSenderAddressing: " + address);
-                e.setEmailSenderAddressing(address);
+                if(address != null) {
+                   if(address.contains("")){
+                      String[] senderAddrStr = address.split("");
+                      if(senderAddrStr !=null && senderAddrStr.length > 0){
+                         if (V){
+                             Log.v(TAG, " ::Sender Addressing split String 0:: " + senderAddrStr[0]
+                                   + "::Sender Addressing split String 1:: " + senderAddrStr[1]);
+                         }
+                         e.setEmailSenderAddressing(senderAddrStr[0].trim());
+                      }
+                   } else{
+                         if (D) Log.d(TAG, "setSenderAddressing: " + address);
+                         e.setEmailSenderAddressing(address.trim());
+                   }
+                }
                 return;
             }
             if (D) Log.d(TAG, "setSenderAddressing: " + address);
@@ -702,28 +729,30 @@ public class BluetoothMapContent {
 
     private void setDateTime(BluetoothMapMessageListingElement e, Cursor c,
         FilterInfo fi, BluetoothMapAppParams ap) {
-        long date = 0;
-        int timeStamp = 0;
+        if ((ap.getParameterMask() & MASK_DATETIME) != 0) {
+            long date = 0;
+            int timeStamp = 0;
 
-        if (fi.msgType == FilterInfo.TYPE_SMS) {
-            date = c.getLong(c.getColumnIndex(Sms.DATE));
-        } else if (fi.msgType == FilterInfo.TYPE_MMS) {
-            /* Use Mms.DATE for all messages. Although contract class states */
-            /* Mms.DATE_SENT are for outgoing messages. But that is not working. */
-            date = c.getLong(c.getColumnIndex(Mms.DATE)) * 1000L;
+            if (fi.msgType == FilterInfo.TYPE_SMS) {
+                date = c.getLong(c.getColumnIndex(Sms.DATE));
+            } else if (fi.msgType == FilterInfo.TYPE_MMS) {
+                /* Use Mms.DATE for all messages. Although contract class states */
+                /* Mms.DATE_SENT are for outgoing messages. But that is not working. */
+                date = c.getLong(c.getColumnIndex(Mms.DATE)) * 1000L;
 
-            /* int msgBox = c.getInt(c.getColumnIndex(Mms.MESSAGE_BOX)); */
-            /* if (msgBox == Mms.MESSAGE_BOX_INBOX) { */
-            /*     date = c.getLong(c.getColumnIndex(Mms.DATE)) * 1000L; */
-            /* } else { */
-            /*     date = c.getLong(c.getColumnIndex(Mms.DATE_SENT)) * 1000L; */
-            /* } */
-        } else {
-            timeStamp = c.getColumnIndex(MessageColumns.TIMESTAMP);
-            String timestamp = c.getString(timeStamp);
-            date =Long.valueOf(timestamp);
+                /* int msgBox = c.getInt(c.getColumnIndex(Mms.MESSAGE_BOX)); */
+                /* if (msgBox == Mms.MESSAGE_BOX_INBOX) { */
+                /*     date = c.getLong(c.getColumnIndex(Mms.DATE)) * 1000L; */
+                /* } else { */
+                /*     date = c.getLong(c.getColumnIndex(Mms.DATE_SENT)) * 1000L; */
+                /* } */
+            } else {
+                timeStamp = c.getColumnIndex(MessageColumns.TIMESTAMP);
+                String timestamp = c.getString(timeStamp);
+                date =Long.valueOf(timestamp);
+            }
+            e.setDateTime(date);
         }
-        e.setDateTime(date);
     }
 
     private String getTextPartsMms(long id) {
@@ -931,7 +960,7 @@ public class BluetoothMapContent {
         if (msgType == 1) {
             String phone = fi.phoneNum;
             String name = fi.phoneAlphaTag;
-            if (phone != null && phone.length() > 0 && phone.matches(recip)) {
+            if (phone != null && phone.length() > 0 && phone.replaceAll("\\s","").matches(recip)) {
                 if (D) Log.d(TAG, "match recipient phone = " + phone);
                 res = true;
             } else if (name != null && name.length() > 0 && name.matches(recip)) {
@@ -944,7 +973,7 @@ public class BluetoothMapContent {
         else {
             String phone = c.getString(c.getColumnIndex(Sms.ADDRESS));
             if (phone != null && phone.length() > 0) {
-                if (phone.matches(recip)) {
+                if (phone.replaceAll("\\s","").matches(recip)) {
                     if (D) Log.d(TAG, "match recipient phone = " + phone);
                     res = true;
                 } else {
@@ -1031,7 +1060,7 @@ public class BluetoothMapContent {
         if (msgType == 1) {
             String phone = c.getString(c.getColumnIndex(Sms.ADDRESS));
             if (phone !=null && phone.length() > 0) {
-                if (phone.matches(orig)) {
+                if (phone.replaceAll("\\s","").matches(orig)) {
                     if (D) Log.d(TAG, "match originator phone = " + phone);
                     res = true;
                 } else {
@@ -1050,7 +1079,7 @@ public class BluetoothMapContent {
         else {
             String phone = fi.phoneNum;
             String name = fi.phoneAlphaTag;
-            if (phone != null && phone.length() > 0 && phone.matches(orig)) {
+            if (phone != null && phone.length() > 0 && phone.replaceAll("\\s","").matches(orig)) {
                 if (D) Log.d(TAG, "match originator phone = " + phone);
                 res = true;
             } else if (name != null && name.length() > 0 && name.matches(orig)) {
@@ -1187,15 +1216,25 @@ public class BluetoothMapContent {
         return where;
     }
 
-    private String setWhereFilterReadStatus(BluetoothMapAppParams ap) {
+    private String setWhereFilterReadStatus(BluetoothMapAppParams ap, FilterInfo fi) {
         String where = "";
         if (ap.getFilterReadStatus() != -1) {
-            if ((ap.getFilterReadStatus() & 0x01) != 0) {
-                where = " AND read=0 ";
-            }
+            if ((fi.msgType == FilterInfo.TYPE_SMS) || (fi.msgType == FilterInfo.TYPE_MMS)) {
+               if ((ap.getFilterReadStatus() & 0x01) != 0) {
+                   where = " AND read=0 ";
+               }
 
-            if ((ap.getFilterReadStatus() & 0x02) != 0) {
-                where = " AND read=1 ";
+               if ((ap.getFilterReadStatus() & 0x02) != 0) {
+                   where = " AND read=1 ";
+               }
+            } else {
+               if ((ap.getFilterReadStatus() & 0x01) != 0) {
+                    where = " AND flagRead=0 ";
+               }
+
+               if ((ap.getFilterReadStatus() & 0x02) != 0) {
+                    where = " AND flagRead=1 ";
+               }
             }
         }
 
@@ -1209,6 +1248,15 @@ public class BluetoothMapContent {
             where = " AND date >= " + ap.getFilterPeriodBegin();
             } else if (fi.msgType == FilterInfo.TYPE_MMS) {
                 where = " AND date >= " + (ap.getFilterPeriodBegin() / 1000L);
+            }else {
+                Time time = new Time();
+                try {
+                    time.parse(ap.getFilterPeriodBeginString().trim());
+                    where += " AND timeStamp >= " + time.toMillis(false);
+                } catch (TimeFormatException e) {
+                    Log.d(TAG, "Bad formatted FilterPeriodBegin, Ignore"
+                          + ap.getFilterPeriodBeginString());
+                }
             }
         }
 
@@ -1217,6 +1265,15 @@ public class BluetoothMapContent {
             where += " AND date <= " + ap.getFilterPeriodEnd();
             } else if (fi.msgType == FilterInfo.TYPE_MMS) {
                 where += " AND date <= " + (ap.getFilterPeriodEnd() / 1000L);
+            } else {
+                Time time = new Time();
+                try {
+                    time.parse(ap.getFilterPeriodEndString().trim());
+                    where += " AND timeStamp <= " + time.toMillis(false);
+                } catch (TimeFormatException e) {
+                    Log.d(TAG, "Bad formatted FilterPeriodEnd, Ignore"
+                          + ap.getFilterPeriodEndString());
+                }
             }
         }
 
@@ -1365,7 +1422,7 @@ public class BluetoothMapContent {
         String where = "";
 
         where += setWhereFilterFolderType(folder, fi);
-        where += setWhereFilterReadStatus(ap);
+        where += setWhereFilterReadStatus(ap, fi);
         where += setWhereFilterPeriod(ap, fi);
         /* where += setWhereFilterOriginator(ap, fi); */
         /* where += setWhereFilterRecipient(ap, fi); */
@@ -1452,10 +1509,12 @@ public class BluetoothMapContent {
         if (msgType == -1)
             return true;
 
-        if ((msgType & 0x16) == 0)
-            return true;
-
-        return false;
+        if ((msgType & 0x04) == 0) {
+           return true;
+        } else {
+           if (V) Log.v(TAG, "Invalid Message Filter");
+           return false;
+        }
 
     }
 
@@ -2022,8 +2081,14 @@ public class BluetoothMapContent {
         case SMS_CDMA:
             return getSmsMessage(id, appParams.getCharset());
         case MMS:
+            if(appParams.getCharset()== MAP_MESSAGE_CHARSET_NATIVE) {
+                throw new IllegalArgumentException("Invalid Charset: Native for Message Type MMS");
+            }
             return getMmsMessage(id, appParams);
         case EMAIL:
+            if(appParams.getCharset()== MAP_MESSAGE_CHARSET_NATIVE) {
+                throw new IllegalArgumentException("Invalid Charset: Native for Message Type Email");
+            }
             return getEmailMessage(id, appParams);
         }
         throw new IllegalArgumentException("Invalid message handle.");
@@ -2032,7 +2097,7 @@ public class BluetoothMapContent {
     private void setVCardFromEmailAddress(BluetoothMapbMessage message, String emailAddr, boolean incoming) {
         if(D) Log.d(TAG, "setVCardFromEmailAddress, emailAdress is " +emailAddr);
         String contactId = null, contactName = null;
-        String[] phoneNumbers = null;
+        String[] phoneNumbers = {""};
         String[] emailAddresses = new String[1];
         StringTokenizer emailId;
         Cursor p;
