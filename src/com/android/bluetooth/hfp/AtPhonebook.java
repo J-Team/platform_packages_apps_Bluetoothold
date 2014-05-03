@@ -206,8 +206,8 @@ public class AtPhonebook {
                     atCommandResponse = "+CPBS: \"SM\",0," + getMaxPhoneBookSize(0);
                     atCommandResult = HeadsetHalConstants.AT_RESPONSE_OK;
                     if (atCommandResponse != null)
-                        mStateMachine.atResponseStringNative(atCommandResponse);
-                    mStateMachine.atResponseCodeNative(atCommandResult, atCommandErrorCode);
+                        mStateMachine.atResponseStringNative(atCommandResponse,getByteAddress(device));
+                    mStateMachine.atResponseCodeNative(atCommandResult,atCommandErrorCode, getByteAddress(device));
                     return;
                 }
                 PhonebookResult pbr = getPhonebookResult(mCurrentPhonebook, true);
