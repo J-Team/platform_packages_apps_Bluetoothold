@@ -279,7 +279,7 @@ final class Avrcp {
                       mRemoteControlDisplay, true);
         mPendingCmds = new ArrayList<Integer>();
         IntentFilter intentFilter = new IntentFilter();
-        //intentFilter.addAction(AudioManager.RCC_CHANGED_ACTION);
+        intentFilter.addAction(AudioManager.RCC_CHANGED_ACTION);
         intentFilter.addAction(PLAYERSETTINGS_RESPONSE);
         try {
             mContext.registerReceiver(mIntentReceiver, intentFilter);
@@ -294,7 +294,7 @@ final class Avrcp {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            /*if (action.equals(AudioManager.RCC_CHANGED_ACTION)) {
+            if (action.equals(AudioManager.RCC_CHANGED_ACTION)) {
                 Log.v(TAG, "received RCC_CHANGED_ACTION");
                 int isRCCFocussed = 0;
                 int isRCCAvailable = 0;
@@ -309,7 +309,7 @@ final class Avrcp {
                 if (mHandler != null) {
                     mHandler.obtainMessage(MSG_UPDATE_RCC_CHANGE, isRCCFocussed, isRCCAvailable, callingPackageName).sendToTarget();
                 }
-            } else*/ if (action.equals(PLAYERSETTINGS_RESPONSE)) {
+            } else if (action.equals(PLAYERSETTINGS_RESPONSE)) {
                 int getResponse = intent.getIntExtra(EXTRA_GET_RESPONSE,
                                                       GET_INVALID);
                 byte [] data;
