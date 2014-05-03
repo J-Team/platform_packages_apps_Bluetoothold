@@ -58,6 +58,7 @@ import com.android.bluetooth.btservice.ProfileService.IProfileServiceBinder;
 
 public class BluetoothMapService extends ProfileService {
     private static final String TAG = "BluetoothMapService";
+    public static final String LOG_TAG = "BluetoothMap";
 
     /**
      * To enable MAP DEBUG/VERBOSE logging - run below cmd in adb shell, and
@@ -66,7 +67,7 @@ public class BluetoothMapService extends ProfileService {
      * DEBUG log: "setprop log.tag.BluetoothMapService VERBOSE"
      */
     public static final boolean DEBUG = true;
-    public static final boolean VERBOSE = true;
+    public static boolean VERBOSE;
 
     /**
      * Intent indicating incoming obex authentication request which is from
@@ -163,7 +164,7 @@ public class BluetoothMapService extends ProfileService {
     private final Handler mSessionStatusHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
-            if (VERBOSE) Log.v(TAG, "Handler(): got msg=" + msg.what);
+            if (DEBUG) Log.v(TAG, "Handler(): got msg=" + msg.what);
 
             switch (msg.what) {
                 case START_LISTENER:
@@ -273,17 +274,19 @@ public class BluetoothMapService extends ProfileService {
         Set<BluetoothDevice> bondedDevices = mAdapter.getBondedDevices();
         int connectionState;
         synchronized (this) {
-            for (BluetoothDevice device : bondedDevices) {
-                ParcelUuid[] featureUuids = device.getUuids();
-                if (!BluetoothUuid.containsAnyUuid(featureUuids, MAP_UUIDS)) {
-                    continue;
-                }
-                connectionState = getConnectionState(device);
-                for(int i = 0; i < states.length; i++) {
-                    if (connectionState == states[i]) {
-                        deviceList.add(device);
-                    }
-                }
+            if (bondedDevices != null) {
+               for (BluetoothDevice device : bondedDevices) {
+                   ParcelUuid[] featureUuids = device.getUuids();
+                   if (!BluetoothUuid.containsAnyUuid(featureUuids, MAP_UUIDS)) {
+                       continue;
+                   }
+                   connectionState = getConnectionState(device);
+                   for(int i = 0; i < states.length; i++) {
+                       if (connectionState == states[i]) {
+                           deviceList.add(device);
+                       }
+                   }
+               }
             }
         }
         return deviceList;
@@ -323,6 +326,8 @@ public class BluetoothMapService extends ProfileService {
     @Override
     protected boolean start() {
         if (DEBUG) Log.d(TAG, "start()");
+        VERBOSE = Log.isLoggable(LOG_TAG, Log.VERBOSE) ? true : false;
+        if (VERBOSE) Log.v(TAG, "verbose logging is enabled");
         IntentFilter filter = new IntentFilter();
         filter.addAction(BluetoothDevice.ACTION_CONNECTION_ACCESS_REPLY);
         filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
@@ -840,7 +845,7 @@ public class BluetoothMapService extends ProfileService {
                     stopped = true; // job done ,close this thread;
                     } catch (IOException ex) {
                        stopped=true;
-                       if (VERBOSE) Log.v(TAG, "Accept exception: " + ex.toString());
+                       if (DEBUG) Log.v(TAG, "Accept exception: " + ex.toString());
                    }
                }
             }

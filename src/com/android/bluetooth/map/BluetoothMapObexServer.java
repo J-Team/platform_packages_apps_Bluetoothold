@@ -43,7 +43,7 @@ public class BluetoothMapObexServer extends ServerRequestHandler {
     private static final String TAG = "BluetoothMapObexServer";
 
     private static final boolean D = BluetoothMapService.DEBUG;
-    private static final boolean V = BluetoothMapService.VERBOSE;
+    private static final boolean V = Log.isLoggable(BluetoothMapService.LOG_TAG, Log.VERBOSE) ? true : false;
 
     private static final int UUID_LENGTH = 16;
 
@@ -376,6 +376,7 @@ public class BluetoothMapObexServer extends ServerRequestHandler {
         int value = appParams.getStatusValue();
         long handle;
         BluetoothMapUtils.TYPE msgType;
+        if (D) Log.d(TAG, "setMessageStatus():");
 
         if(indicator == BluetoothMapAppParams.INVALID_VALUE_PARAMETER ||
            value == BluetoothMapAppParams.INVALID_VALUE_PARAMETER ||
@@ -440,7 +441,7 @@ public class BluetoothMapObexServer extends ServerRequestHandler {
                 return ResponseCodes.OBEX_HTTP_BAD_REQUEST;
         }
 
-        if (folderName == null || folderName == "") {
+        if (folderName == null || folderName.trim().isEmpty() ) {
             if(backup == false)
                 mCurrentFolder = mCurrentFolder.getRoot();
         }

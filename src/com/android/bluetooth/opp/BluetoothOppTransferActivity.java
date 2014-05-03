@@ -67,7 +67,7 @@ public class BluetoothOppTransferActivity extends AlertActivity implements
         DialogInterface.OnClickListener {
     private static final String TAG = "BluetoothOppTransferActivity";
     private static final boolean D = Constants.DEBUG;
-    private static final boolean V = Constants.VERBOSE;
+    private static final boolean V = Log.isLoggable(Constants.TAG, Log.VERBOSE) ? true : false;
 
     private Uri mUri;
 
@@ -371,10 +371,13 @@ public class BluetoothOppTransferActivity extends AlertActivity implements
                             .cancel(mTransInfo.mID);
 
                     // retry the failed transfer
+                    Uri uri = BluetoothOppUtility.originalUri(Uri.parse(mTransInfo.mFileUri));
+                    BluetoothOppSendFileInfo sendFileInfo =
+                        BluetoothOppSendFileInfo.generateFileInfo(this, uri, mTransInfo.mFileType);
+                    uri = BluetoothOppUtility.generateUri(uri, sendFileInfo);
+                    BluetoothOppUtility.putSendFileInfo(uri, sendFileInfo);
+                    mTransInfo.mFileUri = uri.toString();
                     BluetoothOppUtility.retryTransfer(this, mTransInfo);
-                    Uri uri = Uri.parse(mTransInfo.mFileUri);
-                    BluetoothOppUtility.putSendFileInfo(uri,
-                        BluetoothOppSendFileInfo.generateFileInfo(this, uri, mTransInfo.mFileType));
 
                     BluetoothDevice remoteDevice = mAdapter.getRemoteDevice(mTransInfo.mDestAddr);
 

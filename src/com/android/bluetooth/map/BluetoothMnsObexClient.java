@@ -49,8 +49,8 @@ import javax.obex.ResponseCodes;
 public class BluetoothMnsObexClient {
 
     private static final String TAG = "BluetoothMnsObexClient";
-    private static final boolean D = true;
-    private static final boolean V = true;
+    private static final boolean D = BluetoothMapService.DEBUG;
+    private static final boolean V = Log.isLoggable(BluetoothMapService.LOG_TAG, Log.VERBOSE) ? true : false;
 
     private ObexTransport mTransport;
     private Context mContext;
@@ -159,7 +159,7 @@ public class BluetoothMnsObexClient {
     /**
      * Shutdown the MNS.
      */
-    public void shutdown() {
+    public synchronized void shutdown() {
         /* should shutdown handler thread first to make sure
          * handleRegistration won't be called when disconnet
          */
@@ -212,13 +212,13 @@ public class BluetoothMnsObexClient {
     public void handleRegistration(int masId, int notificationStatus){
         Log.d(TAG, "handleRegistration( " + masId + ", " + notificationStatus + ")");
 
+        synchronized (this) {
         if((mEmailObserverRegistered == false) && (mObserverRegistered == false) &&
            (notificationStatus == BluetoothMapAppParams.NOTIFICATION_STATUS_YES)) {
             Log.d(TAG, "handleRegistration: connect");
             connect();
         }
 
-        synchronized (this) {
         if(notificationStatus == BluetoothMapAppParams.NOTIFICATION_STATUS_NO) {
               if(masId == 1 && mEmailObserverRegistered ) {
                  mEmailObserver.unregisterObserver();
@@ -392,10 +392,6 @@ public class BluetoothMnsObexClient {
 
                 if (bytesWritten == eventBytes.length) {
                     Log.i(TAG, "SendEvent finished send length" + eventBytes.length);
-                    if (putOperation != null) {
-                        if (V) Log.v(TAG, "Closing putOperation");
-                        putOperation.close();
-                    }
                     if (outputStream != null) {
                         if (V) Log.v(TAG, "Closing outputStream");
                         outputStream.close();

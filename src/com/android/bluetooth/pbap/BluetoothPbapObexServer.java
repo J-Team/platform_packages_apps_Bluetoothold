@@ -62,7 +62,7 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
 
     private static final boolean D = BluetoothPbapService.DEBUG;
 
-    private static final boolean V = BluetoothPbapService.VERBOSE;
+    private static final boolean V = Log.isLoggable(BluetoothPbapService.LOG_TAG, Log.VERBOSE) ? true : false;
 
     private static final int UUID_LENGTH = 16;
 
@@ -700,7 +700,8 @@ public class BluetoothPbapObexServer extends ServerRequestHandler {
                     if (D) Log.d(TAG, "currentValue=" + currentValue);
                     if (currentValue.equals(compareValue)) {
                         itemsFound++;
-                        currentValue = currentValue.substring(0, currentValue.lastIndexOf(','));
+                        if (currentValue.contains(","))
+                           currentValue = currentValue.substring(0, currentValue.lastIndexOf(','));
                         writeVCardEntry(pos, currentValue,result);
                     }
                 }

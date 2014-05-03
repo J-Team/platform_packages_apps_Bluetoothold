@@ -56,7 +56,7 @@ import java.util.HashMap;
  */
 class BluetoothOppNotification {
     private static final String TAG = "BluetoothOppNotification";
-    private static final boolean V = Constants.VERBOSE;
+    private static final boolean V = Log.isLoggable(Constants.TAG, Log.VERBOSE) ? true : false;
 
     static final String status = "(" + BluetoothShare.STATUS + " == '192'" + ")";
 
@@ -259,6 +259,7 @@ class BluetoothOppNotification {
             cursor = null;
             Log.e(TAG, "updateActiveNotification: " + e);
         }
+
 
         if (cursor == null) {
             return;

@@ -69,7 +69,7 @@ public class BluetoothMapContentObserver {
     private static final String TAG = "BluetoothMapContentObserver";
 
     private static final boolean D = BluetoothMapService.DEBUG;
-    private static final boolean V = BluetoothMapService.VERBOSE;
+    private static final boolean V = Log.isLoggable(BluetoothMapService.LOG_TAG, Log.VERBOSE) ? true : false;
 
     protected Context mContext;
     protected ContentResolver mResolver;
@@ -1187,7 +1187,7 @@ public class BluetoothMapContentObserver {
             Cursor cursor = mResolver.query(msgInfo.uri, ID_PROJECTION, null, null, null);
 
             try {
-                if (cursor.moveToFirst()) {
+                if (cursor != null && cursor.moveToFirst()) {
                     int messageId = cursor.getInt(0);
 
                     Uri updateUri = ContentUris.withAppendedId(UPDATE_STATUS_URI, messageId);
@@ -1205,7 +1205,8 @@ public class BluetoothMapContentObserver {
                     Log.d(TAG, "Can't find message for status update: " + messageUri);
                 }
             } finally {
-                cursor.close();
+                if (cursor != null)
+                    cursor.close();
             }
 
             if (status == 0) {

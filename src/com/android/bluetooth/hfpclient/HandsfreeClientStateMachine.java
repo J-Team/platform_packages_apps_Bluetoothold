@@ -1463,6 +1463,11 @@ final class HandsfreeClientStateMachine extends StateMachine {
 
                     broadcastConnectionState(mCurrentDevice, BluetoothProfile.STATE_CONNECTED,
                             BluetoothProfile.STATE_CONNECTING);
+                    // Send AT+NREC to remote if supported by audio
+                    if (HandsfreeClientHalConstants.HANDSFREECLIENT_NREC_SUPPORTED) {
+                        sendATCmdNative(HandsfreeClientHalConstants.HANDSFREECLIENT_AT_CMD_NREC,
+                            1 , 0, null);
+                    }
                     transitionTo(mConnected);
 
                     // TODO get max stream volume and scale 0-15
@@ -1597,6 +1602,8 @@ final class HandsfreeClientStateMachine extends StateMachine {
                     }
                     break;
                 case SET_SPEAKER_VOLUME:
+                    Log.d(TAG,"Volume is set to " + message.arg1);
+                    mAudioManager.setParameters("hfp_volume=" + message.arg1);
                     if (mVgsFromStack) {
                         mVgsFromStack = false;
                         break;
@@ -2662,6 +2669,9 @@ final class HandsfreeClientStateMachine extends StateMachine {
     private native boolean sendDtmfNative(byte code);
 
     private native boolean requestLastVoiceTagNumberNative();
+
+    private native boolean sendATCmdNative(int ATCmd, int val1,
+            int val2, String arg);
 
     public List<BluetoothHandsfreeClientCall> getCurrentCalls() {
         return new ArrayList<BluetoothHandsfreeClientCall>(mCalls.values());
